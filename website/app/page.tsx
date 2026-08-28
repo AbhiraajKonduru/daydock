@@ -1,4 +1,5 @@
 import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, Check, Download, Search, Sparkles } from "lucide-react";
+import NoticeBanner from "./NoticeBanner";
 
 const downloads = [
   { label: "Windows", detail: ".exe · 3.24 MB", href: "https://github.com/AbhiraajKonduru/daydock/releases/download/v0.1/Daydock_0.1.0_x64-setup.exe" },
@@ -12,10 +13,7 @@ function Arrow() { return <ArrowUpRight className="linkIcon" aria-hidden="true" 
 export default function Home() {
   return (
     <main>
-      <aside className="aiBanner">
-        <span aria-hidden="true" />
-        This website is AI slop. Its purpose is just so that you can download the app.
-      </aside>
+      <NoticeBanner />
       <nav className="nav" aria-label="Primary navigation">
         <a className="wordmark" href="#top"><Mark /><span>Daydock</span></a>
         <div className="navLinks"><span className="version">v0.1 · early release</span><a href="https://github.com/AbhiraajKonduru/daydock" target="_blank" rel="noreferrer">GitHub <Arrow /></a></div>
