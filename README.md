@@ -121,6 +121,8 @@ GitHub sync is optional. When connected, Daydock initializes or uses a Git repos
 
 Download the latest installer from the repository's **Releases** page:
 
+You can also download Daydock from [daydock.vercel.app](https://daydock.vercel.app). The site was quickly generated with AI to save you from digging through the GitHub Releases page; it will be properly de-AI-slopified in the future.
+
 - Windows: NSIS installer
 - macOS: universal DMG for Apple Silicon and Intel Macs
 - Linux, including Arch Linux: AppImage
