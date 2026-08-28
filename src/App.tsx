@@ -931,7 +931,7 @@ export default function App() {
         <p className="eyebrow">Daydock</p>
         <h1>Your day, without the machinery.</h1>
         <p className="welcome-copy">
-          Choose a normal folder. Your daily pages, weekly pages, and documents stay there as plain Markdown—readable with or without this app.
+          Choose a normal folder. Your daily pages, weekly pages, and documents stay there as plain Markdown, readable with or without this app.
         </p>
         <button className="primary-button choose-folder" onClick={chooseFolder}>
           <FolderOpen size={18} /> Choose notebook folder

@@ -1,8 +1,9 @@
 [package]
 name = "daydock"
-version = "0.1.15"
-description = "A quiet, local-first notebook for daily execution"
+version = "0.1.0"
+description = "A simple productivity system for turning weekly goals into focused daily action"
 authors = ["Daydock"]
+license = "GPL-3.0-only"
 edition = "2021"
 
 [lib]
