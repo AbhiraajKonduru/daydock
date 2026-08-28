@@ -74,7 +74,7 @@ The `Assets/` folder is created for notebook resources, but attachment managemen
 - Adjustable zoom and collapsible navigation
 - No account, database service, or required cloud provider
 
-Daydock has used roughly 4 MB of RAM in the creator's everyday use. Actual memory use varies by operating system, WebView, notebook size, and workload.
+Daydock has used roughly 4 MB of RAM in my everyday use. Actual memory use varies by operating system, WebView, notebook size, and workload.
 
 ## Keyboard shortcuts
 
