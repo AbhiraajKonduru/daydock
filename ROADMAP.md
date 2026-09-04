@@ -12,7 +12,6 @@ Daydock is intentionally small. This roadmap records likely directions, not prom
 
 ## Ideas under consideration
 
-- Customizable daily and weekly templates
 - Export tools, including PDF export
 - More complete keyboard and command navigation
 - Better management of files in `Assets/`

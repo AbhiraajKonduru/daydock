@@ -1,5 +1,6 @@
+use regex::{Captures, Regex};
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     fs,
     fs::OpenOptions,
@@ -58,9 +59,35 @@ struct IndexStatus {
     warnings: Vec<String>,
 }
 
-const SEARCH_SCHEMA_VERSION: i64 = 1;
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RenameResult {
+    file: NotebookFile,
+    updated_paths: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TemplateSettings {
+    daily: String,
+    weekly: String,
+}
+
+const SEARCH_SCHEMA_VERSION: i64 = 2;
 const SEARCH_DIRECTORY: &str = ".daydock";
 const SEARCH_DATABASE: &str = "search.sqlite";
+const DEFAULT_DAILY_TEMPLATE_PATH: &str = "Templates/Daily/Default.md";
+const DEFAULT_WEEKLY_TEMPLATE_PATH: &str = "Templates/Weekly/Default.md";
+const TEMPLATE_SETTINGS_PATH: &str = "Templates/config.json";
+const BUILTIN_DAILY_TEMPLATE: &str = "# {{DATE}}\n\n## Win\n\n- [ ] \n\n## Tasks\n\n- [ ] \n\n## Limits\n\n- [ ] \n\n## Notes\n\n\n\n## Journal\n\n";
+const BUILTIN_WEEKLY_TEMPLATE: &str = "# Week {{WEEK}}, {{YEAR}}\n\n## Goals\n\n- [ ] \n\n## Recurring\n\n- [ ] \n\n## Upcoming\n\n- [ ] \n\n## Backlog\n\n- [ ] \n";
+
+fn default_template_settings() -> TemplateSettings {
+    TemplateSettings {
+        daily: DEFAULT_DAILY_TEMPLATE_PATH.into(),
+        weekly: DEFAULT_WEEKLY_TEMPLATE_PATH.into(),
+    }
+}
 
 fn search_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -172,6 +199,10 @@ fn is_markdown(path: &Path) -> bool {
         .is_some_and(|value| value.eq_ignore_ascii_case("md"))
 }
 
+fn is_searchable_notebook_path(path: &str) -> bool {
+    path.starts_with("Daily/") || path.starts_with("Weekly/") || path.starts_with("Docs/")
+}
+
 fn search_database_path(root: &Path) -> PathBuf {
     root.join(SEARCH_DIRECTORY).join(SEARCH_DATABASE)
 }
@@ -212,6 +243,14 @@ fn exclude_search_cache_from_git(root: &Path) -> Result<(), String> {
 }
 
 fn title_from_content(path: &str, content: &str) -> String {
+    if path.starts_with("Docs/") {
+        let file = path.rsplit('/').next().unwrap_or(path);
+        return trim_markdown_extension(file)
+            .split('_')
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
     content
         .lines()
         .find_map(|line| line.strip_prefix("# ").map(str::trim))
@@ -451,6 +490,71 @@ fn select_notebook() -> Option<String> {
         .map(|path| path.to_string_lossy().to_string())
 }
 
+fn write_template_settings(root: &Path, settings: &TemplateSettings) -> Result<(), String> {
+    let destination = root.join(TEMPLATE_SETTINGS_PATH);
+    let content = serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?;
+    fs::write(destination, format!("{content}\n")).map_err(|error| error.to_string())
+}
+
+fn valid_template_path(root: &Path, path: &str, kind: &str) -> bool {
+    let prefix = if kind == "daily" {
+        "Templates/Daily/"
+    } else {
+        "Templates/Weekly/"
+    };
+    path.starts_with(prefix)
+        && !path[prefix.len()..].contains('/')
+        && path.to_ascii_lowercase().ends_with(".md")
+        && root.join(path).is_file()
+}
+
+fn ensure_template_library(root: &Path) -> Result<(), String> {
+    for directory in ["Templates/Daily", "Templates/Weekly"] {
+        fs::create_dir_all(root.join(directory)).map_err(|error| error.to_string())?;
+    }
+    for (path, content) in [
+        (DEFAULT_DAILY_TEMPLATE_PATH, BUILTIN_DAILY_TEMPLATE),
+        (DEFAULT_WEEKLY_TEMPLATE_PATH, BUILTIN_WEEKLY_TEMPLATE),
+    ] {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(root.join(path))
+        {
+            Ok(mut file) => file
+                .write_all(content.as_bytes())
+                .map_err(|error| error.to_string())?,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    if !root.join(TEMPLATE_SETTINGS_PATH).is_file() {
+        write_template_settings(root, &default_template_settings())?;
+    }
+    Ok(())
+}
+
+fn read_template_settings_blocking(root: &Path) -> Result<TemplateSettings, String> {
+    ensure_template_library(root)?;
+    let parsed = fs::read_to_string(root.join(TEMPLATE_SETTINGS_PATH))
+        .ok()
+        .and_then(|content| serde_json::from_str::<TemplateSettings>(&content).ok());
+    let mut repaired = parsed.is_none();
+    let mut settings = parsed.unwrap_or_else(default_template_settings);
+    if !valid_template_path(root, &settings.daily, "daily") {
+        settings.daily = DEFAULT_DAILY_TEMPLATE_PATH.into();
+        repaired = true;
+    }
+    if !valid_template_path(root, &settings.weekly, "weekly") {
+        settings.weekly = DEFAULT_WEEKLY_TEMPLATE_PATH.into();
+        repaired = true;
+    }
+    if repaired {
+        write_template_settings(root, &settings)?;
+    }
+    Ok(settings)
+}
+
 #[tauri::command]
 fn initialize_notebook_blocking(root: String) -> Result<(), String> {
     let root = clean_root(&root)?;
@@ -459,6 +563,9 @@ fn initialize_notebook_blocking(root: String) -> Result<(), String> {
     for directory in ["Daily", "Weekly", "Docs", "Assets"] {
         fs::create_dir_all(root.join(directory)).map_err(|error| error.to_string())?;
     }
+
+    ensure_template_library(&root)?;
+    let _ = read_template_settings_blocking(&root)?;
 
     exclude_search_cache_from_git(&root)?;
     Ok(())
@@ -469,9 +576,17 @@ fn scan_notebook_blocking(root: String) -> Result<Vec<NotebookFile>, String> {
     if !root_path.exists() {
         return Err("The notebook folder no longer exists.".into());
     }
+    ensure_template_library(&root_path)?;
+    let _ = read_template_settings_blocking(&root_path)?;
 
     let mut files = Vec::new();
-    for directory in ["Daily", "Weekly", "Docs"] {
+    for directory in [
+        "Daily",
+        "Weekly",
+        "Docs",
+        "Templates/Daily",
+        "Templates/Weekly",
+    ] {
         let directory = root_path.join(directory);
         if !directory.exists() {
             continue;
@@ -571,8 +686,10 @@ fn write_notebook_file_blocking(
     }
     fs::write(destination, &content).map_err(|error| error.to_string())?;
     let root_path = clean_root(&root)?;
-    if let Ok(_guard) = search_lock().lock() {
-        let _ = upsert_search_document(&root_path, &path, &content);
+    if is_searchable_notebook_path(&path) {
+        if let Ok(_guard) = search_lock().lock() {
+            let _ = upsert_search_document(&root_path, &path, &content);
+        }
     }
     read_notebook_file_blocking(root, path)
 }
@@ -601,9 +718,11 @@ fn materialize_notebook_file_blocking(
         Err(error) => return Err(error.to_string()),
     }
     let file = read_notebook_file_blocking(root.clone(), path.clone())?;
-    if let Ok(root_path) = clean_root(&root) {
-        if let Ok(_guard) = search_lock().lock() {
-            let _ = upsert_search_document(&root_path, &path, &file.content);
+    if is_searchable_notebook_path(&path) {
+        if let Ok(root_path) = clean_root(&root) {
+            if let Ok(_guard) = search_lock().lock() {
+                let _ = upsert_search_document(&root_path, &path, &file.content);
+            }
         }
     }
     Ok(file)
@@ -623,6 +742,286 @@ fn delete_notebook_file_blocking(root: String, path: String) -> Result<(), Strin
         }
     }
     Ok(())
+}
+
+fn normalized_link_stem(value: &str) -> String {
+    trim_markdown_extension(value.trim())
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+fn trim_markdown_extension(value: &str) -> &str {
+    value
+        .get(value.len().saturating_sub(3)..)
+        .filter(|suffix| suffix.eq_ignore_ascii_case(".md"))
+        .map(|_| &value[..value.len() - 3])
+        .unwrap_or(value)
+}
+
+fn display_name_from_stem(stem: &str) -> String {
+    stem.split('_')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn rewrite_document_links(content: &str, old_path: &str, new_path: &str) -> String {
+    let old_file = old_path.rsplit('/').next().unwrap_or(old_path);
+    let new_file = new_path.rsplit('/').next().unwrap_or(new_path);
+    let old_stem = normalized_link_stem(trim_markdown_extension(old_file));
+    let new_stem = trim_markdown_extension(new_file);
+    let wiki_links = Regex::new(r"\[\[([^\]]+)\]\]").expect("valid wiki link regex");
+    let with_wiki_links = wiki_links.replace_all(content, |captures: &Captures<'_>| {
+        if normalized_link_stem(&captures[1]).eq_ignore_ascii_case(&old_stem) {
+            format!("[[{}]]", display_name_from_stem(new_stem))
+        } else {
+            captures[0].to_string()
+        }
+    });
+
+    let markdown_links =
+        Regex::new(r"(\[[^\]]*\]\()([^)]+\.(?i:md))(\))").expect("valid Markdown link regex");
+    markdown_links
+        .replace_all(&with_wiki_links, |captures: &Captures<'_>| {
+            let target = captures[2].replace('\\', "/");
+            let normalized_target = target.strip_prefix("./").unwrap_or(&target);
+            let points_to_path = normalized_target.eq_ignore_ascii_case(old_path);
+            let points_to_file = !normalized_target.contains('/')
+                && normalized_target.eq_ignore_ascii_case(old_file);
+            if !points_to_path && !points_to_file {
+                return captures[0].to_string();
+            }
+            format!(
+                "{}{}{}",
+                &captures[1],
+                if points_to_file { new_file } else { new_path },
+                &captures[3]
+            )
+        })
+        .into_owned()
+}
+
+fn rename_notebook_document_blocking(
+    root: String,
+    old_path: String,
+    new_path: String,
+) -> Result<RenameResult, String> {
+    if !old_path.starts_with("Docs/") || !new_path.starts_with("Docs/") {
+        return Err("Only documents in Docs can be renamed.".into());
+    }
+    let source = safe_notebook_path(&root, &old_path)?;
+    let destination = safe_notebook_path(&root, &new_path)?;
+    if !is_markdown(&source) || !is_markdown(&destination) {
+        return Err("Daydock document names must keep the .md extension.".into());
+    }
+    if source.parent() != destination.parent() {
+        return Err("Renaming a document cannot move it to another folder.".into());
+    }
+    if !source.is_file() {
+        return Err("That document no longer exists.".into());
+    }
+    if old_path == new_path {
+        return Ok(RenameResult {
+            file: read_notebook_file_blocking(root, old_path)?,
+            updated_paths: Vec::new(),
+        });
+    }
+
+    let destination_is_source = destination.exists()
+        && fs::canonicalize(&source).ok() == fs::canonicalize(&destination).ok();
+    if destination.exists() && !destination_is_source {
+        return Err("A document with that name already exists.".into());
+    }
+    if destination_is_source {
+        let temporary = source.with_file_name(format!(
+            ".daydock-rename-{}-{}.tmp",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::rename(&source, &temporary).map_err(|error| error.to_string())?;
+        if let Err(error) = fs::rename(&temporary, &destination) {
+            let _ = fs::rename(&temporary, &source);
+            return Err(error.to_string());
+        }
+    } else {
+        fs::rename(&source, &destination).map_err(|error| error.to_string())?;
+    }
+
+    let root_path = clean_root(&root)?;
+    let mut updated_paths = Vec::new();
+    for directory in ["Daily", "Weekly", "Docs"] {
+        let directory = root_path.join(directory);
+        if !directory.exists() {
+            continue;
+        }
+        for entry in WalkDir::new(directory).follow_links(false) {
+            let entry = entry.map_err(|error| error.to_string())?;
+            if !entry.file_type().is_file() || !is_markdown(entry.path()) {
+                continue;
+            }
+            let content = fs::read_to_string(entry.path()).map_err(|error| error.to_string())?;
+            let rewritten = rewrite_document_links(&content, &old_path, &new_path);
+            if rewritten == content {
+                continue;
+            }
+            fs::write(entry.path(), rewritten).map_err(|error| error.to_string())?;
+            updated_paths.push(
+                entry
+                    .path()
+                    .strip_prefix(&root_path)
+                    .map_err(|error| error.to_string())?
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+
+    if let Ok(_guard) = search_lock().lock() {
+        if let Ok(mut connection) =
+            open_or_rebuild_search_database(&search_database_path(&root_path))
+        {
+            let _ = sync_search_index(&root_path, &mut connection);
+        }
+    }
+    Ok(RenameResult {
+        file: read_notebook_file_blocking(root, new_path)?,
+        updated_paths,
+    })
+}
+
+fn rename_notebook_template_blocking(
+    root: String,
+    old_path: String,
+    new_path: String,
+) -> Result<RenameResult, String> {
+    let root_path = clean_root(&root)?;
+    let old_kind = if old_path.starts_with("Templates/Daily/") {
+        "daily"
+    } else if old_path.starts_with("Templates/Weekly/") {
+        "weekly"
+    } else {
+        return Err("Only daily and weekly templates can be renamed.".into());
+    };
+    let new_kind = if new_path.starts_with("Templates/Daily/") {
+        "daily"
+    } else if new_path.starts_with("Templates/Weekly/") {
+        "weekly"
+    } else {
+        return Err("Renaming a template cannot change its type.".into());
+    };
+    if old_kind != new_kind {
+        return Err("Renaming a template cannot change its type.".into());
+    }
+    let source = safe_notebook_path(&root, &old_path)?;
+    let destination = safe_notebook_path(&root, &new_path)?;
+    if !is_markdown(&source)
+        || !is_markdown(&destination)
+        || source.parent() != destination.parent()
+    {
+        return Err(
+            "Template names must stay in their original folder and keep the .md extension.".into(),
+        );
+    }
+    if !source.is_file() {
+        return Err("That template no longer exists.".into());
+    }
+    if old_path == new_path {
+        return Ok(RenameResult {
+            file: read_notebook_file_blocking(root, old_path)?,
+            updated_paths: Vec::new(),
+        });
+    }
+
+    let mut settings = read_template_settings_blocking(&root_path)?;
+    let destination_is_source = destination.exists()
+        && fs::canonicalize(&source).ok() == fs::canonicalize(&destination).ok();
+    if destination.exists() && !destination_is_source {
+        return Err("A template with that name already exists.".into());
+    }
+    if destination_is_source {
+        let temporary = source.with_file_name(format!(
+            ".daydock-template-rename-{}-{}.tmp",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::rename(&source, &temporary).map_err(|error| error.to_string())?;
+        if let Err(error) = fs::rename(&temporary, &destination) {
+            let _ = fs::rename(&temporary, &source);
+            return Err(error.to_string());
+        }
+    } else {
+        fs::rename(&source, &destination).map_err(|error| error.to_string())?;
+    }
+
+    if settings.daily == old_path {
+        settings.daily = new_path.clone();
+    }
+    if settings.weekly == old_path {
+        settings.weekly = new_path.clone();
+    }
+    ensure_template_library(&root_path)?;
+    write_template_settings(&root_path, &settings)?;
+    Ok(RenameResult {
+        file: read_notebook_file_blocking(root, new_path)?,
+        updated_paths: Vec::new(),
+    })
+}
+
+fn delete_notebook_template_blocking(
+    root: String,
+    path: String,
+) -> Result<TemplateSettings, String> {
+    let root_path = clean_root(&root)?;
+    let kind = if path.starts_with("Templates/Daily/") {
+        "daily"
+    } else if path.starts_with("Templates/Weekly/") {
+        "weekly"
+    } else {
+        return Err("Only daily and weekly templates can be deleted.".into());
+    };
+    if !valid_template_path(&root_path, &path, kind) {
+        return Err("That template no longer exists.".into());
+    }
+    let mut settings = read_template_settings_blocking(&root_path)?;
+    fs::remove_file(root_path.join(&path)).map_err(|error| error.to_string())?;
+    ensure_template_library(&root_path)?;
+    if settings.daily == path {
+        settings.daily = DEFAULT_DAILY_TEMPLATE_PATH.into();
+    }
+    if settings.weekly == path {
+        settings.weekly = DEFAULT_WEEKLY_TEMPLATE_PATH.into();
+    }
+    write_template_settings(&root_path, &settings)?;
+    Ok(settings)
+}
+
+fn set_active_template_blocking(
+    root: String,
+    kind: String,
+    path: String,
+) -> Result<TemplateSettings, String> {
+    let root_path = clean_root(&root)?;
+    if kind != "daily" && kind != "weekly" {
+        return Err("Unknown template type.".into());
+    }
+    if !valid_template_path(&root_path, &path, &kind) {
+        return Err("That template is unavailable.".into());
+    }
+    let mut settings = read_template_settings_blocking(&root_path)?;
+    if kind == "daily" {
+        settings.daily = path;
+    } else {
+        settings.weekly = path;
+    }
+    write_template_settings(&root_path, &settings)?;
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -846,6 +1245,60 @@ async fn delete_notebook_file(root: String, path: String) -> Result<(), String> 
 }
 
 #[tauri::command]
+async fn rename_notebook_document(
+    root: String,
+    old_path: String,
+    new_path: String,
+) -> Result<RenameResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rename_notebook_document_blocking(root, old_path, new_path)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn get_template_settings(root: String) -> Result<TemplateSettings, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = clean_root(&root)?;
+        read_template_settings_blocking(&root)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn set_active_template(
+    root: String,
+    kind: String,
+    path: String,
+) -> Result<TemplateSettings, String> {
+    tauri::async_runtime::spawn_blocking(move || set_active_template_blocking(root, kind, path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn rename_notebook_template(
+    root: String,
+    old_path: String,
+    new_path: String,
+) -> Result<RenameResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rename_notebook_template_blocking(root, old_path, new_path)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn delete_notebook_template(root: String, path: String) -> Result<TemplateSettings, String> {
+    tauri::async_runtime::spawn_blocking(move || delete_notebook_template_blocking(root, path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn get_git_status(root: String) -> Result<GitStatus, String> {
     tauri::async_runtime::spawn_blocking(move || get_git_status_blocking(root))
         .await
@@ -931,6 +1384,11 @@ pub fn run() {
             materialize_notebook_file,
             write_notebook_file,
             delete_notebook_file,
+            rename_notebook_document,
+            get_template_settings,
+            set_active_template,
+            rename_notebook_template,
+            delete_notebook_template,
             get_git_status,
             configure_github_sync,
             sync_notebook,
@@ -1026,10 +1484,17 @@ mod tests {
         .expect("write daily page");
 
         let files = scan_notebook_blocking(root_string).expect("scan notebook");
-        assert_eq!(files.len(), 1);
-        assert_eq!(files[0].path, "Daily/2026-08-03.md");
-        assert!(!files[0].loaded);
+        assert_eq!(files.len(), 3);
+        assert!(files.iter().any(|file| file.path == "Daily/2026-08-03.md"));
+        assert!(files
+            .iter()
+            .any(|file| file.path == DEFAULT_DAILY_TEMPLATE_PATH));
+        assert!(files
+            .iter()
+            .any(|file| file.path == DEFAULT_WEEKLY_TEMPLATE_PATH));
+        assert!(files.iter().all(|file| !file.loaded));
         assert!(root.join("Assets").is_dir());
+        assert!(root.join(TEMPLATE_SETTINGS_PATH).is_file());
 
         fs::remove_dir_all(&root).expect("remove isolated test notebook");
     }
@@ -1055,6 +1520,44 @@ mod tests {
     }
 
     #[test]
+    fn built_in_templates_are_seeded_preserved_and_recreated() {
+        let root = test_root("templates");
+        let root_string = root.to_string_lossy().to_string();
+        initialize_notebook_blocking(root_string.clone()).expect("initialize");
+
+        assert_eq!(
+            fs::read_to_string(root.join(DEFAULT_DAILY_TEMPLATE_PATH)).unwrap(),
+            BUILTIN_DAILY_TEMPLATE
+        );
+        fs::write(root.join(DEFAULT_DAILY_TEMPLATE_PATH), "# My {{DATE}}\n").expect("edit default");
+        initialize_notebook_blocking(root_string.clone()).expect("reinitialize");
+        assert_eq!(
+            fs::read_to_string(root.join(DEFAULT_DAILY_TEMPLATE_PATH)).unwrap(),
+            "# My {{DATE}}\n"
+        );
+
+        let renamed = "Templates/Daily/My_Default.md";
+        rename_notebook_template_blocking(
+            root_string.clone(),
+            DEFAULT_DAILY_TEMPLATE_PATH.into(),
+            renamed.into(),
+        )
+        .expect("rename default");
+        assert!(root.join(DEFAULT_DAILY_TEMPLATE_PATH).is_file());
+        assert_eq!(
+            read_template_settings_blocking(&root).unwrap().daily,
+            renamed
+        );
+
+        delete_notebook_template_blocking(root_string, renamed.into()).expect("delete active");
+        assert_eq!(
+            read_template_settings_blocking(&root).unwrap().daily,
+            DEFAULT_DAILY_TEMPLATE_PATH
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
     fn materialize_never_overwrites_an_existing_file() {
         let root = test_root("materialize");
         initialize_notebook_blocking(root.to_string_lossy().to_string()).expect("initialize");
@@ -1071,6 +1574,51 @@ mod tests {
         assert_eq!(file.content, "# External\n\nOriginal\n");
         assert_eq!(fs::read_to_string(existing).unwrap(), file.content);
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn renames_documents_without_changing_headings_and_repairs_links() {
+        let root = test_root("rename-document");
+        let root_string = root.to_string_lossy().to_string();
+        initialize_notebook_blocking(root_string.clone()).expect("initialize");
+        fs::write(
+            root.join("Docs/Old_Name.md"),
+            "# Independent heading\n\n[[Old Name]]\n",
+        )
+        .expect("source document");
+        fs::write(
+            root.join("Daily/2026-08-03.md"),
+            "[Named link](Old_Name.md)\n[Full link](Docs/Old_Name.md)\n",
+        )
+        .expect("linked page");
+
+        let result = rename_notebook_document_blocking(
+            root_string,
+            "Docs/Old_Name.md".into(),
+            "Docs/New_Name.md".into(),
+        )
+        .expect("rename document");
+
+        assert!(!root.join("Docs/Old_Name.md").exists());
+        assert_eq!(result.file.path, "Docs/New_Name.md");
+        assert!(result.file.content.starts_with("# Independent heading"));
+        assert!(result.file.content.contains("[[New Name]]"));
+        let linked = fs::read_to_string(root.join("Daily/2026-08-03.md")).unwrap();
+        assert!(linked.contains("[Named link](New_Name.md)"));
+        assert!(linked.contains("[Full link](Docs/New_Name.md)"));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn document_search_titles_come_from_file_names() {
+        assert_eq!(
+            title_from_content("Docs/Project_Ideas.md", "# A different heading\n"),
+            "Project Ideas"
+        );
+        assert_eq!(
+            title_from_content("Daily/2026-08-03.md", "# Monday\n"),
+            "Monday"
+        );
     }
 
     #[test]

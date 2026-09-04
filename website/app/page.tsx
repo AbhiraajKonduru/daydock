@@ -2,9 +2,9 @@ import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, Check, Download, Sear
 import NoticeBanner from "./NoticeBanner";
 
 const downloads = [
-  { label: "Windows", detail: ".exe · 3.24 MB", href: "https://github.com/AbhiraajKonduru/daydock/releases/download/v0.1/Daydock_0.1.0_x64-setup.exe" },
-  { label: "macOS", detail: "Universal .dmg · 8.65 MB", href: "https://github.com/AbhiraajKonduru/daydock/releases/download/v0.1/Daydock_0.1.0_universal.dmg" },
-  { label: "Linux", detail: "AppImage · 79.5 MB", href: "https://github.com/AbhiraajKonduru/daydock/releases/download/v0.1/Daydock_0.1.0_amd64.AppImage" },
+  { label: "Windows", detail: ".exe", href: "https://github.com/AbhiraajKonduru/daydock/releases/download/v0.2/Daydock_0.2.0_x64-setup.exe" },
+  { label: "macOS", detail: "Universal .dmg", href: "https://github.com/AbhiraajKonduru/daydock/releases/download/v0.2/Daydock_0.2.0_universal.dmg" },
+  { label: "Linux", detail: "AppImage", href: "https://github.com/AbhiraajKonduru/daydock/releases/download/v0.2/Daydock_0.2.0_amd64.AppImage" },
 ];
 
 function Mark() { return <span className="mark" aria-hidden="true"><i /><i /><i /></span>; }
@@ -16,7 +16,7 @@ export default function Home() {
       <NoticeBanner />
       <nav className="nav" aria-label="Primary navigation">
         <a className="wordmark" href="#top"><Mark /><span>Daydock</span></a>
-        <div className="navLinks"><span className="version">v0.1 · early release</span><a href="https://github.com/AbhiraajKonduru/daydock" target="_blank" rel="noreferrer">GitHub <Arrow /></a></div>
+        <div className="navLinks"><span className="version">v0.2 · prerelease</span><a href="https://github.com/AbhiraajKonduru/daydock" target="_blank" rel="noreferrer">GitHub <Arrow /></a></div>
       </nav>
 
       <section className="hero" id="top">
@@ -53,7 +53,7 @@ export default function Home() {
         <div className="features"><article><span>01</span><h3>Plain Markdown</h3><p>Daily pages, weekly plans, and documents are normal files in a folder you choose.</p></article><article><span>02</span><h3>Local first</h3><p>No account, proprietary format, or cloud dependency between you and your work.</p></article><article><span>03</span><h3>Weekly → daily</h3><p>Hold the week in view, then make one realistic day at a time.</p></article><article><span>04</span><h3>Optional sync</h3><p>Use your existing Git and GitHub setup when you want your notebook elsewhere.</p></article></div>
       </section>
 
-      <section className="download" id="download"><div><p className="eyebrow light"><span /> Version 0.1</p><h2>Make today<br />a little clearer.</h2><p>Early, useful, and already used daily by its creator. Builds are unsigned, so your operating system may show a warning.</p></div><div className="downloadList">{downloads.map((item) => <a key={item.label} href={item.href}><span><b>{item.label}</b><small>{item.detail}</small></span><Download aria-hidden="true" /> </a>)}<a className="allReleases" href="https://github.com/AbhiraajKonduru/daydock/releases/tag/v0.1" target="_blank" rel="noreferrer"><span><b>All release files</b><small>Checksums &amp; source archives</small></span><Arrow /></a></div></section>
+      <section className="download" id="download"><div><p className="eyebrow light"><span /> Version 0.2 prerelease</p><h2>Make today<br />a little clearer.</h2><p>Early, useful, and already used daily by its creator. Builds are unsigned, so your operating system may show a warning.</p></div><div className="downloadList">{downloads.map((item) => <a key={item.label} href={item.href}><span><b>{item.label}</b><small>{item.detail}</small></span><Download aria-hidden="true" /> </a>)}<a className="allReleases" href="https://github.com/AbhiraajKonduru/daydock/releases/tag/v0.2" target="_blank" rel="noreferrer"><span><b>All release files</b><small>Checksums &amp; source archives</small></span><Arrow /></a></div></section>
 
       <footer><a className="wordmark" href="#top"><Mark /><span>Daydock</span></a><p>Open source under GPL-3.0</p><a href="https://github.com/AbhiraajKonduru/daydock" target="_blank" rel="noreferrer">GitHub <Arrow /></a></footer>
     </main>

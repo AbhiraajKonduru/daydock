@@ -8,6 +8,18 @@ export type NotebookFile = {
 
 export type SaveState = "saved" | "saving" | "error";
 
+export type RenameResult = {
+  file: NotebookFile;
+  updatedPaths: string[];
+};
+
+export type TemplateKind = "daily" | "weekly";
+
+export type TemplateSettings = {
+  daily: string;
+  weekly: string;
+};
+
 export type GitStatus = {
   configured: boolean;
   remoteUrl: string | null;

@@ -1,6 +1,10 @@
 import type { NotebookFile } from "../types";
+import { documentTitle } from "./documents";
 
 const DAY_MS = 86_400_000;
+
+export const BUILTIN_DAILY_TEMPLATE = `# {{DATE}}\n\n## Win\n\n- [ ] \n\n## Tasks\n\n- [ ] \n\n## Limits\n\n- [ ] \n\n## Notes\n\n\n\n## Journal\n\n`;
+export const BUILTIN_WEEKLY_TEMPLATE = `# Week {{WEEK}}, {{YEAR}}\n\n## Goals\n\n- [ ] \n\n## Recurring\n\n- [ ] \n\n## Upcoming\n\n- [ ] \n\n## Backlog\n\n- [ ] \n`;
 
 export function dateKey(date = new Date()): string {
   const year = date.getFullYear();
@@ -62,12 +66,24 @@ function legacyDailyTemplate(key: string, streak: number): string {
 
 export function dailyTemplate(key: string, legacyStreak?: number): string {
   if (legacyStreak !== undefined) return legacyDailyTemplate(key, legacyStreak);
-  return `# ${longDate(key)}\n\n## Win\n\n- [ ] \n\n## Tasks\n\n- [ ] \n\n## Limits\n\n- [ ] \n\n## Notes\n\n\n\n## Journal\n\n`;
+  return renderTemplateForPath(BUILTIN_DAILY_TEMPLATE, dailyPath(key));
 }
 
 export function weeklyTemplate(date = new Date()): string {
-  const { year, week } = isoWeek(date);
-  return `# Week ${week}, ${year}\n\n## Goals\n\n- [ ] \n\n## Recurring\n\n- [ ] \n\n## Upcoming\n\n- [ ] \n\n## Backlog\n\n- [ ] \n`;
+  return renderTemplateForPath(BUILTIN_WEEKLY_TEMPLATE, weeklyPath(date));
+}
+
+export function renderTemplateForPath(template: string, path: string): string {
+  const daily = path.match(/^Daily\/(\d{4}-\d{2}-\d{2})\.md$/);
+  if (daily) return template.replaceAll("{{DATE}}", longDate(daily[1]));
+
+  const weekly = path.match(/^Weekly\/(\d{4})-W(\d{2})\.md$/);
+  if (weekly) {
+    return template
+      .replaceAll("{{WEEK}}", String(Number(weekly[2])))
+      .replaceAll("{{YEAR}}", weekly[1]);
+  }
+  return template;
 }
 
 export function documentTemplate(name: string): string {
@@ -120,6 +136,7 @@ export function setSystemStreak(content: string, streak: number): string {
 }
 
 export function titleForFile(file: NotebookFile): string {
+  if (file.path.startsWith("Docs/") || file.path.startsWith("Templates/")) return documentTitle(file);
   const heading = file.content.match(/^#\s+(.+)$/m)?.[1]?.trim();
   return heading || file.name;
 }

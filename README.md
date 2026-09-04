@@ -4,7 +4,7 @@ Daydock is a simple productivity system that turns weekly goals into focused dai
 
 No account. No required cloud. No proprietary file format.
 
-> Daydock is in an early `v0.1` release. It has been used daily by its creator, but bugs and rough edges should be expected. Back up your notebook and report anything surprising.
+> Daydock `v0.2` is a prerelease. It has been used daily by its creator, but bugs and rough edges should be expected. Back up your notebook and report anything surprising.
 
 ## Why Daydock exists
 
@@ -54,7 +54,7 @@ Tomorrow is planned in service of tomorrow's today.
 
 Documents are Daydock's durable artifacts. Use them for routines, project plans, protocols, checklists, personal principles, reference notes, or any strategy that should outlive a single day or week.
 
-Create a document from the sidebar, then link to it from any page with `[[Document Name]]`. Clicking the rendered link opens the document. Standard Markdown links to `.md` files are also supported. Documents remain ordinary files in `Docs/`, so they are readable and editable outside Daydock.
+Create a document from the sidebar, then link to it from any page with `[[Document Name]]`. Clicking the rendered link opens the document. Standard Markdown links to `.md` files are also supported. Documents remain ordinary files in `Docs/`, so they are readable and editable outside Daydock. Right-click a document to rename its file and repair links to it; its Markdown heading remains independent.
 
 The `Assets/` folder is created for notebook resources, but attachment management is not yet built into the app.
 
@@ -63,6 +63,7 @@ The `Assets/` folder is created for notebook resources, but attachment managemen
 - Local-first storage in a folder you choose
 - Plain Markdown as the source of truth
 - Automatic daily and weekly pages
+- Customizable daily and weekly Markdown templates
 - Weekly goals, recurring items, upcoming items, and backlog
 - Focused daily pages with a win, tasks, limits, notes, and journal
 - Side-by-side planning for tomorrow
@@ -90,6 +91,7 @@ Use `Ctrl` on Windows and Linux. Use `Cmd` where the shortcut uses the platform 
 | `Alt+N` | Open next week |
 | `Alt+P` | Open or close Plan mode |
 | `Alt+D` | In Plan mode, switch between the week and today |
+| `Alt+E` | Apply a template to the current daily or weekly page |
 | `Ctrl/Cmd+K` | Search the notebook |
 | `Ctrl/Cmd+S` | Save now |
 | `Ctrl/Cmd+Shift+S` | Sync the notebook with GitHub |
@@ -110,16 +112,17 @@ Your Notebook/
 ├── Weekly/
 ├── Docs/
 ├── Assets/
+├── Templates/
 └── .daydock/
 ```
 
-Daily, weekly, and document pages are Markdown files. Daydock's derived SQLite search cache lives at `.daydock/search.sqlite`. It contains no authoritative data and can be safely deleted while Daydock is closed. Daydock rebuilds it automatically.
+Daily, weekly, document, and template pages are Markdown files. Active template choices are stored in `Templates/config.json`. Daydock's derived SQLite search cache lives at `.daydock/search.sqlite`. It contains no authoritative data and can be safely deleted while Daydock is closed. Daydock rebuilds it automatically.
 
 GitHub sync is optional. When connected, Daydock initializes or uses a Git repository in the notebook folder, commits saved changes, pulls remote changes, and pushes local changes. The search cache is excluded from Daydock-managed commits. Authentication is handled by Git or your SSH key.
 
 ## Download
 
-Download the latest installer from the repository's **Releases** page:
+Download the `v0.2` prerelease from the repository's [Releases page](https://github.com/AbhiraajKonduru/daydock/releases/tag/v0.2):
 
 You can also download Daydock from [daydock.vercel.app](https://daydock.vercel.app). The site was quickly generated with AI to save you from digging through the GitHub Releases page; it will be properly de-AI-slopified in the future.
 
@@ -127,7 +130,7 @@ You can also download Daydock from [daydock.vercel.app](https://daydock.vercel.a
 - macOS: universal DMG for Apple Silicon and Intel Macs
 - Linux, including Arch Linux: AppImage
 
-The `v0.1` builds are unsigned. Windows SmartScreen and macOS Gatekeeper may warn before opening them. Packaging for the Arch User Repository is not available yet, but the AppImage can run on Arch Linux without installing a distro-specific package.
+The `v0.2` builds are unsigned. Windows SmartScreen and macOS Gatekeeper may warn before opening them. Packaging for the Arch User Repository is not available yet, but the AppImage can run on Arch Linux without installing a distro-specific package.
 
 ## Run locally
 
@@ -153,7 +156,7 @@ npm run build
 npm run tauri build
 ```
 
-Desktop bundles are written beneath `src-tauri/target/release/bundle`. Pushing a version tag such as `v0.1` runs the release workflow and creates a GitHub prerelease with builds for Windows, macOS, and Linux.
+Desktop bundles are written beneath `src-tauri/target/release/bundle`. Pushing a version tag such as `v0.2` runs the release workflow and creates a GitHub prerelease with builds for Windows, macOS, and Linux.
 
 ## Contributing
 

@@ -4,11 +4,13 @@ import {
   ChevronLeft,
   FilePlus2,
   FolderOpen,
+  LayoutTemplate,
   Menu,
   Minus,
   PanelLeftClose,
   PanelLeftOpen,
   PanelsTopLeft,
+  Pencil,
   Search,
   Settings2,
   Square,
@@ -21,7 +23,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MarkdownEditor } from "./components/MarkdownEditor";
 import { SearchPalette } from "./components/SearchPalette";
+import { ApplyTemplateModal, TemplateManager } from "./components/TemplateManager";
 import {
+  BUILTIN_DAILY_TEMPLATE,
+  BUILTIN_WEEKLY_TEMPLATE,
   dailyPath,
   dailyTemplate,
   dateFromKey,
@@ -31,10 +36,16 @@ import {
   shortDate,
   titleForFile,
   weeklyPath,
-  weeklyTemplate,
+  renderTemplateForPath,
 } from "./lib/dates";
+import {
+  documentDisplayName,
+  documentFileStem,
+  documentNameIssue,
+  documentPath,
+} from "./lib/documents";
 import { notebookStorage } from "./lib/storage";
-import type { GitStatus, NotebookFile, SaveState } from "./types";
+import type { GitStatus, NotebookFile, SaveState, TemplateKind, TemplateSettings } from "./types";
 
 const ROOT_KEY = "daydock-root";
 const SIDEBAR_KEY = "daydock-sidebar-collapsed";
@@ -67,10 +78,6 @@ function nameFromRoot(root: string): string {
   return root.split(/[\\/]/).filter(Boolean).pop() || "Daydock";
 }
 
-function sanitizeDocumentName(value: string): string {
-  return value.replace(/[<>:"/\\|?*]/g, "").replace(/\.md$/i, "").trim();
-}
-
 type DocumentModalProps = {
   open: boolean;
   onClose: () => void;
@@ -91,9 +98,9 @@ function DocumentModal({ open, onClose, onCreate }: DocumentModalProps) {
   if (!open) return null;
 
   const submit = () => {
-    const safeName = sanitizeDocumentName(name);
-    if (safeName) onCreate(safeName);
+    if (!documentNameIssue(name)) onCreate(name.trim().replace(/\.md$/i, ""));
   };
+  const issue = name ? documentNameIssue(name) : null;
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -124,11 +131,79 @@ function DocumentModal({ open, onClose, onCreate }: DocumentModalProps) {
           }}
           placeholder="Morning Routine"
         />
+        {issue && <p className="modal-field-error">{issue}</p>}
+        {!issue && name.trim() && <p className="modal-help">Saved as {documentFileStem(name)}.md</p>}
         <div className="modal-actions">
           <button className="text-button" onClick={onClose}>Cancel</button>
-          <button className="primary-button" onClick={submit} disabled={!sanitizeDocumentName(name)}>
+          <button className="primary-button" onClick={submit} disabled={!name.trim() || Boolean(issue)}>
             Create document
           </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type RenameDocumentModalProps = {
+  file: NotebookFile | null;
+  files: NotebookFile[];
+  onClose: () => void;
+  onRename: (name: string) => void;
+};
+
+function RenameDocumentModal({ file, files, onClose, onRename }: RenameDocumentModalProps) {
+  const [name, setName] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (file) {
+      setName(documentDisplayName(file.name));
+      window.setTimeout(() => input.current?.select(), 0);
+    }
+  }, [file]);
+
+  if (!file) return null;
+  const parent = file.path.slice(0, file.path.lastIndexOf("/") + 1);
+  const newPath = `${parent}${documentFileStem(name)}.md`;
+  const duplicate = files.some(
+    (candidate) => candidate.path !== file.path && candidate.path.toLowerCase() === newPath.toLowerCase(),
+  );
+  const issue = name ? documentNameIssue(name) : "Enter a document name.";
+  const unchanged = newPath === file.path;
+  const submit = () => {
+    if (!issue && !duplicate && !unchanged) onRename(name.trim().replace(/\.md$/i, ""));
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className="new-document-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rename-document-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="modal-heading">
+          <div><h2 id="rename-document-title">Rename document</h2></div>
+          <button className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button>
+        </div>
+        <label htmlFor="rename-document-name">Name</label>
+        <input
+          id="rename-document-name"
+          ref={input}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submit();
+            if (event.key === "Escape") onClose();
+          }}
+        />
+        {issue && <p className="modal-field-error">{issue}</p>}
+        {duplicate && <p className="modal-field-error">A document with that name already exists.</p>}
+        {!issue && !duplicate && <p className="modal-help">The heading inside the document will not change. Saved as {documentFileStem(name)}.md</p>}
+        <div className="modal-actions">
+          <button className="text-button" onClick={onClose}>Cancel</button>
+          <button className="primary-button" onClick={submit} disabled={Boolean(issue) || duplicate || unchanged}>Rename</button>
         </div>
       </section>
     </div>
@@ -239,6 +314,8 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [documentModalOpen, setDocumentModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<NotebookFile | null>(null);
+  const [renameTarget, setRenameTarget] = useState<NotebookFile | null>(null);
+  const [documentMenu, setDocumentMenu] = useState<{ file: NotebookFile; x: number; y: number } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem(SIDEBAR_KEY) === "true",
@@ -255,6 +332,12 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const syncingRef = useRef(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [templateSettings, setTemplateSettings] = useState<TemplateSettings>({
+    daily: "Templates/Daily/Default.md",
+    weekly: "Templates/Weekly/Default.md",
+  });
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
 
   const saveTimer = useRef<number | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
@@ -300,17 +383,43 @@ export default function App() {
     planTodayContentRef.current = planTodayContent;
   }, [planTodayContent]);
 
+  useEffect(() => {
+    if (!documentMenu) return;
+    const close = () => setDocumentMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("blur", close);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [documentMenu]);
+
   const bootstrap = useCallback(async (notebookRoot: string) => {
     setLoading(true);
     setError("");
     try {
       await notebookStorage.initialize(notebookRoot);
       let scanned = await notebookStorage.scan(notebookRoot);
+      const settings = await notebookStorage.getTemplateSettings(notebookRoot);
+      setTemplateSettings(settings);
 
       const todayPath = dailyPath();
       let todayFile = scanned.find((file) => file.path === todayPath);
       if (!todayFile) {
-        const initial = dailyTemplate(dateKey());
+        let initial = dailyTemplate(dateKey());
+        try {
+          const template = await notebookStorage.read(notebookRoot, settings.daily);
+          initial = renderTemplateForPath(template.content, todayPath);
+          scanned = scanned.map((file) => file.path === template.path ? template : file);
+        } catch {
+          // The native layer repairs missing defaults; the hardcoded version is
+          // still the final safety net if the template cannot be read.
+        }
         todayFile = await notebookStorage.materialize(notebookRoot, todayPath, initial);
         scanned = [todayFile, ...scanned];
       } else {
@@ -365,6 +474,33 @@ export default function App() {
         const before = previous.find((file) => file.path === active);
         const after = scanned.find((file) => file.path === active);
         if (active && before && !after) {
+          // A filesystem rename appears as one removed path plus one new path.
+          // Follow it when the replacement is unambiguous, so an open document
+          // does not remain attached to a path that no longer exists.
+          if (active.startsWith("Docs/") && !dirty.current) {
+            const parent = active.slice(0, active.lastIndexOf("/") + 1);
+            const added = scanned.filter((candidate) =>
+              candidate.path.startsWith(parent)
+              && !previous.some((oldFile) => oldFile.path === candidate.path)
+              && candidate.modified === before.modified,
+            );
+            if (added.length === 1) {
+              const renamed = await notebookStorage.read(root, added[0].path);
+              if (stopped || activePathRef.current !== active || dirty.current) return;
+              if (renamed.content === contentRef.current) {
+                const followed = merged.map((file) => file.path === renamed.path ? renamed : file);
+                filesRef.current = followed;
+                setFiles(followed);
+                setActivePath(renamed.path);
+                activePathRef.current = renamed.path;
+                setContent(renamed.content);
+                contentRef.current = renamed.content;
+                activeDiskModifiedRef.current = renamed.modified;
+                setError("");
+                return;
+              }
+            }
+          }
           setError(`“${active}” was removed outside Daydock.`);
         // While dirty, the conditional write is the authoritative conflict check.
         // Treating a polling snapshot as external here races with our own save.
@@ -522,12 +658,21 @@ export default function App() {
 
       let initial: string;
       if (/^Daily\/\d{4}-\d{2}-\d{2}\.md$/.test(path)) {
-        const key = path.slice(6, 16);
-        initial = dailyTemplate(key);
-      } else if (path.startsWith("Weekly/")) {
-        initial = weeklyTemplate();
+        try {
+          const template = await notebookStorage.read(root, templateSettings.daily);
+          initial = renderTemplateForPath(template.content, path);
+        } catch {
+          initial = renderTemplateForPath(BUILTIN_DAILY_TEMPLATE, path);
+        }
+      } else if (/^Weekly\/\d{4}-W\d{2}\.md$/.test(path)) {
+        try {
+          const template = await notebookStorage.read(root, templateSettings.weekly);
+          initial = renderTemplateForPath(template.content, path);
+        } catch {
+          initial = renderTemplateForPath(BUILTIN_WEEKLY_TEMPLATE, path);
+        }
       } else {
-        initial = documentTemplate(path.split("/").pop()?.replace(/\.md$/i, "") || "Document");
+        initial = documentTemplate(documentDisplayName(path.split("/").pop()?.replace(/\.md$/i, "") || "Document"));
       }
 
       const materialized = await notebookStorage.materialize(root, path, initial);
@@ -538,7 +683,7 @@ export default function App() {
       });
       return materialized;
     },
-    [files, root],
+    [files, root, templateSettings],
   );
 
   const openPath = useCallback(
@@ -566,6 +711,7 @@ export default function App() {
           activeDiskModifiedRef.current = file.modified;
           dirty.current = false;
         }
+        setTemplatesOpen(file.path.startsWith("Templates/"));
         setSaveState("saved");
         setSidebarOpen(false);
       } catch (caught) {
@@ -703,13 +849,17 @@ export default function App() {
       let path = target.replace(/\\/g, "/");
       if (path.includes("..")) return;
       if (!path.toLowerCase().endsWith(".md")) {
-        const cleanName = sanitizeDocumentName(path);
+        const cleanName = documentFileStem(path);
         const matching = files.find(
-          (file) => file.path.startsWith("Docs/") && file.name.toLowerCase() === cleanName.toLowerCase(),
+          (file) => file.path.startsWith("Docs/") && documentFileStem(file.name).toLowerCase() === cleanName.toLowerCase(),
         );
         path = matching?.path || `Docs/${cleanName}.md`;
       } else if (!path.includes("/")) {
-        path = `Docs/${path}`;
+        const cleanName = documentFileStem(path);
+        const matching = files.find(
+          (file) => file.path.startsWith("Docs/") && documentFileStem(file.name).toLowerCase() === cleanName.toLowerCase(),
+        );
+        path = matching?.path || `Docs/${cleanName}.md`;
       }
       void openPath(path);
     },
@@ -758,6 +908,13 @@ export default function App() {
         event.preventDefault();
         void togglePlanReference();
       }
+      if (event.altKey && event.key.toLowerCase() === "e") {
+        const path = activePathRef.current;
+        if (/^(?:Daily\/\d{4}-\d{2}-\d{2}|Weekly\/\d{4}-W\d{2})\.md$/.test(path)) {
+          event.preventDefault();
+          setApplyTemplateOpen(true);
+        }
+      }
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "s") {
         event.preventDefault();
         syncShortcutRef.current();
@@ -793,8 +950,195 @@ export default function App() {
 
   const createDocument = async (name: string) => {
     setDocumentModalOpen(false);
-    await openPath(`Docs/${sanitizeDocumentName(name)}.md`);
+    await openPath(documentPath(name));
   };
+
+  const templateKindForPath = (path: string): TemplateKind => path.startsWith("Templates/Weekly/") ? "weekly" : "daily";
+
+  const showTemplateFile = useCallback((file: NotebookFile) => {
+    setActivePath(file.path);
+    setContent(file.content);
+    activePathRef.current = file.path;
+    contentRef.current = file.content;
+    activeDiskModifiedRef.current = file.modified;
+    dirty.current = false;
+    setTemplatesOpen(true);
+    setPlanMode(false);
+    setSaveState("saved");
+  }, []);
+
+  const openTemplates = useCallback(async () => {
+    try {
+      await flushSave();
+      await flushPlanSave();
+      await flushPlanTodaySave();
+      const path = templateSettings.daily;
+      let file = filesRef.current.find((candidate) => candidate.path === path);
+      if (!file?.loaded && root) file = await notebookStorage.read(root, path);
+      if (!file) throw new Error("The daily default template is unavailable.");
+      setFiles((current) => current.map((candidate) => candidate.path === file!.path ? file! : candidate));
+      showTemplateFile(file);
+      setSidebarOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [flushPlanSave, flushPlanTodaySave, flushSave, root, showTemplateFile, templateSettings.daily]);
+
+  const createTemplate = useCallback(async (kind: TemplateKind, name: string, source?: NotebookFile) => {
+    if (!root) return;
+    const parent = kind === "daily" ? "Templates/Daily/" : "Templates/Weekly/";
+    const path = `${parent}${documentFileStem(name)}.md`;
+    try {
+      await flushSave();
+      let initial = kind === "daily" ? BUILTIN_DAILY_TEMPLATE : BUILTIN_WEEKLY_TEMPLATE;
+      if (source) {
+        const loaded = source.loaded ? source : await notebookStorage.read(root, source.path);
+        initial = loaded.content;
+      }
+      const created = await notebookStorage.materialize(root, path, initial);
+      setFiles((current) => [created, ...current.filter((file) => file.path !== created.path)]);
+      showTemplateFile(created);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [flushSave, root, showTemplateFile]);
+
+  const renameTemplate = useCallback(async (file: NotebookFile, name: string) => {
+    if (!root) return;
+    const parent = file.path.slice(0, file.path.lastIndexOf("/") + 1);
+    const newPath = `${parent}${documentFileStem(name)}.md`;
+    try {
+      await flushSave();
+      if (dirty.current) return;
+      const result = await notebookStorage.renameTemplate(root, file.path, newPath);
+      const [scanned, settings] = await Promise.all([
+        notebookStorage.scan(root),
+        notebookStorage.getTemplateSettings(root),
+      ]);
+      const refreshed = scanned.map((candidate) => candidate.path === result.file.path ? result.file : candidate);
+      setFiles(refreshed);
+      filesRef.current = refreshed;
+      setTemplateSettings(settings);
+      showTemplateFile(result.file);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [flushSave, root, showTemplateFile]);
+
+  const deleteTemplate = useCallback(async (file: NotebookFile) => {
+    if (!root) return;
+    const kind = templateKindForPath(file.path);
+    try {
+      if (file.path === activePathRef.current) await flushSave();
+      const settings = await notebookStorage.deleteTemplate(root, file.path);
+      const scanned = await notebookStorage.scan(root);
+      const targetPath = settings[kind];
+      const target = await notebookStorage.read(root, targetPath);
+      const refreshed = scanned.map((candidate) => candidate.path === target.path ? target : candidate);
+      setTemplateSettings(settings);
+      setFiles(refreshed);
+      filesRef.current = refreshed;
+      showTemplateFile(target);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [flushSave, root, showTemplateFile]);
+
+  const setActiveTemplate = useCallback(async (kind: TemplateKind, path: string) => {
+    if (!root) return;
+    try {
+      await flushSave();
+      setTemplateSettings(await notebookStorage.setActiveTemplate(root, kind, path));
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [flushSave, root]);
+
+  const applyTemplate = useCallback(async (templatePath: string) => {
+    if (!root) return;
+    const targetPath = activePathRef.current;
+    try {
+      await flushSave();
+      if (dirty.current) return;
+      const template = await notebookStorage.read(root, templatePath);
+      const replaced = await notebookStorage.write(
+        root,
+        targetPath,
+        renderTemplateForPath(template.content, targetPath),
+        activeDiskModifiedRef.current,
+      );
+      setFiles((current) => current.map((file) => file.path === replaced.path ? replaced : file));
+      setContent(replaced.content);
+      contentRef.current = replaced.content;
+      activeDiskModifiedRef.current = replaced.modified;
+      dirty.current = false;
+      setApplyTemplateOpen(false);
+      setSaveState("saved");
+      setError("");
+    } catch (caught) {
+      setApplyTemplateOpen(false);
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [flushSave, root]);
+
+  const renameDocument = useCallback(async (name: string) => {
+    const file = renameTarget;
+    if (!root || !file || documentNameIssue(name)) return;
+    const parent = file.path.slice(0, file.path.lastIndexOf("/") + 1);
+    const newPath = `${parent}${documentFileStem(name)}.md`;
+
+    try {
+      await flushSave();
+      await flushPlanSave();
+      await flushPlanTodaySave();
+      if (dirty.current || planDirty.current || planTodayDirty.current) return;
+
+      const oldPath = file.path;
+      await notebookStorage.rename(root, oldPath, newPath);
+      const scanned = await notebookStorage.scan(root);
+      const nextActivePath = activePathRef.current === oldPath ? newPath : activePathRef.current;
+      const pathsToReload = [...new Set([
+        nextActivePath,
+        planWeeklyPathRef.current,
+        planTodayPathRef.current,
+      ].filter((path) => path && scanned.some((candidate) => candidate.path === path)))];
+      const loaded = await Promise.all(pathsToReload.map((path) => notebookStorage.read(root, path)));
+      const loadedByPath = new Map(loaded.map((item) => [item.path, item]));
+      const refreshed = scanned.map((item) => loadedByPath.get(item.path) || item);
+      filesRef.current = refreshed;
+      setFiles(refreshed);
+
+      const active = loadedByPath.get(nextActivePath);
+      if (active) {
+        setActivePath(nextActivePath);
+        activePathRef.current = nextActivePath;
+        setContent(active.content);
+        contentRef.current = active.content;
+        activeDiskModifiedRef.current = active.modified;
+      }
+      const weekly = loadedByPath.get(planWeeklyPathRef.current);
+      if (weekly) {
+        setPlanWeeklyContent(weekly.content);
+        planWeeklyContentRef.current = weekly.content;
+        planDiskModifiedRef.current = weekly.modified;
+      }
+      const today = loadedByPath.get(planTodayPathRef.current);
+      if (today) {
+        setPlanTodayContent(today.content);
+        planTodayContentRef.current = today.content;
+        planTodayDiskModifiedRef.current = today.modified;
+      }
+      setRenameTarget(null);
+      setError("");
+      setSaveState("saved");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [flushPlanSave, flushPlanTodaySave, flushSave, renameTarget, root]);
 
   const confirmDeleteDocument = useCallback(async () => {
     const file = deleteTarget;
@@ -1004,7 +1348,19 @@ export default function App() {
               <button onClick={() => setDocumentModalOpen(true)} aria-label="New document"><FilePlus2 size={15} /></button>
             </div>
             {recentDocs.map((file) => (
-              <div key={file.path} className={`document-row ${activePath === file.path ? "active" : ""}`}>
+              <div
+                key={file.path}
+                className={`document-row ${activePath === file.path ? "active" : ""}`}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  const scale = zoom / 100;
+                  setDocumentMenu({
+                    file,
+                    x: Math.max(6, Math.min(event.clientX / scale, window.innerWidth / scale - 160)),
+                    y: Math.max(6, Math.min(event.clientY / scale, window.innerHeight / scale - 48)),
+                  });
+                }}
+              >
                 <button className="document-open" onClick={() => void openPath(file.path)}>
                   <span>{titleForFile(file)}</span>
                 </button>
@@ -1021,6 +1377,10 @@ export default function App() {
           </div>
         </div>
 
+        <button className={`templates-switcher ${templatesOpen ? "active" : ""}`} onClick={() => void openTemplates()}>
+          <LayoutTemplate size={16} />
+          <span><small>Customize</small>Templates</span>
+        </button>
         <button className="folder-switcher" onClick={chooseFolder} title={root}>
           <Settings2 size={16} />
           <span><small>Notebook folder</small>{nameFromRoot(root)}</span>
@@ -1103,6 +1463,22 @@ export default function App() {
         <div className={`page-wrap ${planMode ? "plan-layout" : ""}`}>
           {loading ? (
             <div className="page-loading"><span /><span /><span /><span /></div>
+          ) : templatesOpen ? (
+            <TemplateManager
+              files={files}
+              activePath={activePath}
+              content={content}
+              saveState={saveState}
+              settings={templateSettings}
+              zoom={zoom}
+              onChoose={(path) => void openPath(path)}
+              onChange={handleChange}
+              onCreate={(kind, name) => void createTemplate(kind, name)}
+              onDuplicate={(file, name) => void createTemplate(templateKindForPath(file.path), name, file)}
+              onRename={(file, name) => void renameTemplate(file, name)}
+              onDelete={(file) => void deleteTemplate(file)}
+              onSetActive={(kind, path) => void setActiveTemplate(kind, path)}
+            />
           ) : planMode ? (
             <>
               <section className="plan-panel weekly-plan-panel" aria-label={planReference === "today" ? "Today's plan" : "Weekly plan"}>
@@ -1129,8 +1505,37 @@ export default function App() {
         </div>
       </main>
 
+      {documentMenu && (
+        <div
+          className="document-context-menu"
+          role="menu"
+          style={{ left: documentMenu.x, top: documentMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            role="menuitem"
+            onClick={() => {
+              setRenameTarget(documentMenu.file);
+              setDocumentMenu(null);
+            }}
+          >
+            <Pencil size={14} /> Rename
+          </button>
+        </div>
+      )}
+
       <SearchPalette files={files} root={root} open={searchOpen} onClose={() => setSearchOpen(false)} onChoose={(path) => void openPath(path)} />
+      <ApplyTemplateModal
+        open={applyTemplateOpen}
+        files={files}
+        kind={activePath.startsWith("Weekly/") ? "weekly" : "daily"}
+        activeTemplate={activePath.startsWith("Weekly/") ? templateSettings.weekly : templateSettings.daily}
+        currentPath={activePath}
+        onClose={() => setApplyTemplateOpen(false)}
+        onApply={(path) => void applyTemplate(path)}
+      />
       <DocumentModal open={documentModalOpen} onClose={() => setDocumentModalOpen(false)} onCreate={(name) => void createDocument(name)} />
+      <RenameDocumentModal file={renameTarget} files={files} onClose={() => setRenameTarget(null)} onRename={(name) => void renameDocument(name)} />
       <DeleteDocumentModal file={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => void confirmDeleteDocument()} />
       <GithubSyncModal open={githubSyncModalOpen} syncing={syncing} onClose={() => setGithubSyncModalOpen(false)} onConnect={(remoteUrl) => void connectGithubSync(remoteUrl)} />
     </div>

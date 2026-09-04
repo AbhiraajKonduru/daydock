@@ -717,8 +717,9 @@ dependencies = [
 
 [[package]]
 name = "daydock"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
+ "regex",
  "rfd",
  "rusqlite",
  "serde",

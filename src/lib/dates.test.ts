@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { NotebookFile } from "../types";
 import {
+  BUILTIN_DAILY_TEMPLATE,
+  BUILTIN_WEEKLY_TEMPLATE,
   calculateSystemStreak,
   dailyTemplate,
   isoWeek,
+  renderTemplateForPath,
   setSystemStreak,
 } from "./dates";
 
@@ -55,6 +58,13 @@ describe("System streak", () => {
 describe("templates and dates", () => {
   it("includes a Limits section in each new daily page", () => {
     expect(dailyTemplate("2026-08-03")).toContain("## Limits\n\n- [ ]");
+  });
+
+  it("renders placeholders from the page being created", () => {
+    expect(renderTemplateForPath(BUILTIN_DAILY_TEMPLATE, "Daily/2026-09-05.md"))
+      .toContain("# Saturday, September 5");
+    expect(renderTemplateForPath(BUILTIN_WEEKLY_TEMPLATE, "Weekly/2027-W03.md"))
+      .toContain("# Week 3, 2027");
   });
 
   it("uses the requested System streak label", () => {

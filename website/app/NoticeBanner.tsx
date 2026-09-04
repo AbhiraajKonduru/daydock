@@ -9,6 +9,8 @@ export default function NoticeBanner() {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
+    // Read after hydration so the server and initial client markup stay identical.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (sessionStorage.getItem(DISMISSED_KEY) === "true") setVisible(false);
   }, []);
 
