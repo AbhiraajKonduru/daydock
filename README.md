@@ -1,38 +1,42 @@
 # Daydock
 
-Daydock is a simple productivity system that turns weekly goals into focused daily action. It combines daily plans, weekly direction, and reusable documents in a desktop app that stores everything as plain Markdown files.
+> Ambition without execution is just a desire.
 
-No account. No required cloud. No proprietary file format.
+Daydock is a free, open-source daily and weekly planner for ambitious students and anyone who keeps falling off their own plans. It gives you a page for today, a page for the week, and documents for anything worth keeping. Everything is stored as plain Markdown files in a folder you own.
 
-> Daydock `v0.2` is a prerelease. It has been used daily by its creator, but bugs and rough edges should be expected. Back up your notebook and report anything surprising.
+No account. No subscription. No required cloud. No streaks or overdue counter keeping score of what you missed.
+
+> Daydock is in beta. It is used daily by its creator, but bugs and rough edges should be expected. Back up your notebook and [tell us](https://daydock.vercel.app/feedback) when something breaks.
 
 ## Why Daydock exists
 
-Most productivity systems grow into another thing to maintain. Daydock is built around a smaller idea: today is the only day you can act in.
+If time blocking, paper planners, and task managers already work for you, keep using them. Daydock is for the people who get two good weeks into a system, have one bad day, and then avoid the system because returning feels worse than starting over.
 
-A day is a useful unit for choosing a realistic amount of work and getting into flow. A week is long enough to provide direction without turning planning into prediction. Broader ambitions can live in your documents, but the working loop stays close to the present:
+That cycle is not fixed by more tags, categories, notifications, or setup. Looking for the perfect productivity app can become another convincing way to avoid uncomfortable work. The app was never the problem.
+
+Daydock handles the boring part: somewhere to write things down, enough weekly direction to make today clear, and almost no setup. The deeper change comes from identity rather than motivation—from acting because you are the kind of person who builds, studies, or follows through, even after a bad week. [Read the full reasoning](https://daydock.vercel.app/why).
+
+The working loop stays close to the present because today is the only day you can act in. A day is small enough for a realistic amount of work. A week provides direction without turning planning into prediction. Broader ambitions can live in your documents, but the working loop stays close to the present:
 
 1. Decide what matters this week.
 2. Choose what matters today.
 3. Work, take notes, and adapt.
 4. Plan tomorrow when tomorrow is close enough to understand.
 
-The system is intentionally personal and forgiving. Unfinished work is information, not a moral failure. Plans can change. Weekly structure reduces the effort of planning each day, while daily focus keeps distant goals from becoming an excuse to procrastinate.
+The system is intentionally personal and forgiving. Unfinished work is information, not a moral failure. Plans can change. A missed day is just a missed day.
+
+## Two branches, one idea
+
+Daydock is one half of The Daydock Foundation, a student-led nonprofit project building free tools and free teaching for people who keep falling off their plans.
+
+- **The tool:** Daydock stays free, open source, local first, and deliberately small. Its job is to remove setup and then get out of your way.
+- **The teaching:** free virtual workshops for high school students, plus written guides for everyone, about self-sabotage, identity, and building a system that survives a bad week.
+
+[Meet the team, volunteer, or join the advisory board](https://daydock.vercel.app/foundation).
 
 ## The main flow
 
-### 1. Anchor the week
-
-Open **This week** and use four lightweight sections:
-
-- **Goals** for outcomes you want by the end of the week
-- **Recurring** for habits or responsibilities that repeat during the week
-- **Upcoming** for events and time-sensitive items
-- **Backlog** for useful work that is not yet a commitment
-
-The week is an anchor, not a contract. It gives each day context while leaving room for real life.
-
-### 2. Plan today
+### 1. Plan today
 
 Every daily page starts with:
 
@@ -43,6 +47,17 @@ Every daily page starts with:
 - **Journal** for reflection
 
 Daydock opens today's page automatically and saves as you type.
+
+### 2. Anchor the week
+
+Open **This week** and use four lightweight sections:
+
+- **Goals** for outcomes you want by the end of the week
+- **Recurring** for habits or responsibilities that repeat during the week
+- **Upcoming** for events and time-sensitive items
+- **Backlog** for useful work that is not yet a commitment
+
+The week is an anchor, not a contract. It gives each day context while leaving room for real life.
 
 ### 3. Use Plan mode for tomorrow
 
@@ -74,7 +89,7 @@ The `Assets/` folder is created for notebook resources, but attachment managemen
 - Optional GitHub sync using your existing Git installation and credentials
 - Signed in-app updates from the Daydock beta channel
 - Adjustable zoom and collapsible navigation
-- No account, database service, or required cloud provider
+- No account, subscription, streaks, database service, or required cloud provider
 
 Daydock has used roughly 4 MB of RAM in my everyday use. Actual memory use varies by operating system, WebView, notebook size, and workload.
 
@@ -122,19 +137,19 @@ GitHub sync is optional. When connected, Daydock initializes or uses a Git repos
 
 ## Download
 
-Download the `v0.2` prerelease from the repository's [Releases page](https://github.com/AbhiraajKonduru/daydock/releases/tag/v0.2):
+Download the latest beta from [daydock.vercel.app/download](https://daydock.vercel.app/download). The site explains the first-launch security warnings and provides installers for:
 
-You can also download Daydock from [daydock.vercel.app](https://daydock.vercel.app). The site was quickly generated with AI to save you from digging through the GitHub Releases page; it will be properly de-AI-slopified in the future.
+- Windows: NSIS installer
+- macOS: universal DMG for Apple silicon and Intel Macs
+- Linux, including Arch Linux: x86_64 AppImage
 
 The website reads its version and platform installer links from the rolling beta release channel, so its download buttons advance automatically after a successful cross-platform release.
 
-- Windows: NSIS installer
-- macOS: universal DMG for Apple Silicon and Intel Macs
-- Linux, including Arch Linux: AppImage
+Current beta builds are not code signed, so Windows SmartScreen and macOS Gatekeeper warn the first time you open Daydock. The download page explains what the warning means and how to proceed. The source and every release are public so you can inspect them before running the app. If that is not enough assurance for you, do not install it yet.
 
-The `v0.2` builds are unsigned. Windows SmartScreen and macOS Gatekeeper may warn before opening them. Packaging for the Arch User Repository is not available yet, but the AppImage can run on Arch Linux without installing a distro-specific package.
+Packaging for the Arch User Repository is not available yet, but the AppImage can run on Arch Linux without a distribution-specific package. You can also get checksums, source archives, and every build artifact from the repository's [Releases page](https://github.com/AbhiraajKonduru/daydock/releases).
 
-Starting with the first updater-enabled beta after `v0.2`, Daydock checks its signed beta channel in the background. When an update is available, you can install and restart from inside the app or choose **Later** and use the small toolbar reminder when it is convenient. Existing `v0.2` users must manually install that first updater-enabled beta once.
+Daydock checks its signed beta channel in the background. When an update is available, you can install and restart from inside the app or choose **Later** and use the toolbar reminder when it is convenient. Updater signatures verify that later builds came from the Daydock release pipeline; they are separate from the operating-system code signing that removes first-launch warnings.
 
 ## Run locally
 
@@ -160,7 +175,7 @@ npm run build
 npm run tauri build
 ```
 
-Desktop bundles are written beneath `src-tauri/target/release/bundle`. Pushing a version tag such as `v0.2` runs the release workflow and creates a GitHub prerelease with builds for Windows, macOS, and Linux.
+Desktop bundles are written beneath `src-tauri/target/release/bundle`. Pushing a SemVer tag such as `v0.4.0` runs the release workflow and creates a GitHub prerelease with builds for Windows, macOS, and Linux.
 
 Maintainer release and updater-key instructions are in [`docs/RELEASING.md`](docs/RELEASING.md).
 
@@ -168,7 +183,7 @@ Maintainer release and updater-key instructions are in [`docs/RELEASING.md`](doc
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The project maintainer reviews changes for quality and fit with Daydock's vision.
 
-Possible future directions and explicit non-goals are published at [daydock.vercel.app/roadmap](https://daydock.vercel.app/roadmap).
+Possible future directions, funding-dependent commitments, and explicit non-goals are published on the [public roadmap](https://daydock.vercel.app/roadmap). You can also [send feedback](https://daydock.vercel.app/feedback) without opening a GitHub issue.
 
 ## License
 

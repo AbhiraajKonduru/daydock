@@ -13,9 +13,16 @@ Small fixes and documentation improvements can go directly to a pull request.
 
 ## Product principles
 
-Contributions should preserve the idea at the center of Daydock: features should reduce planning overhead, not create more machinery to maintain.
+Daydock is the deliberately boring tool described on the website: a page for today, a page for the week, and documents for anything worth keeping. It exists to remove setup and decisions, then get out of the user's way. The software is one branch of The Daydock Foundation; free workshops and guides address the behavior change that an app cannot teach.
 
-A useful feature can be declined if it makes the core experience less focused or moves the project away from that principle.
+Contributions should preserve:
+
+- the daily and weekly planning loop
+- plain Markdown files as the source of truth
+- a low-setup, local-first experience that works without an account or hosted storage
+- a forgiving interface without streaks, points, badges, or counters that turn missed work into a score
+
+Daydock is not trying to become a project-management suite, a tagged task database, or a social productivity platform. A useful feature can be declined if it adds machinery to maintain or weakens those boundaries. Read the [product reasoning](https://daydock.vercel.app/why) and [public roadmap](https://daydock.vercel.app/roadmap) before proposing a substantial change.
 
 ## Development setup
 

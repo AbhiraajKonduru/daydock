@@ -39,7 +39,7 @@ Until those credentials are configured, the workflow publishes an unsigned macOS
    - `src-tauri/Cargo.toml`
    - `src-tauri/Cargo.lock`
    - `src-tauri/tauri.conf.json`
-3. Update the README and website version/download copy when appropriate.
+3. Update user-facing release notes and documentation when behavior changed. If the release should replace the website's emergency fallback, update both fallback manifests in `website/lib/downloadManifest.ts` and `website/app/download/DownloadPage.tsx`; normal download buttons advance from the rolling channel automatically.
 4. Run:
 
    ```powershell
