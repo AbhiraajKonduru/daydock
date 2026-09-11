@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Download } from "lucide-react";
+import { ArrowDown, ArrowUpRight, Download } from "lucide-react";
 import { Shell } from "../PublicChrome";
 import HeroWave from "../HeroWave";
 import { GITHUB_URL } from "../site";
@@ -61,28 +61,25 @@ export default function DownloadPage() {
             notebook is a folder of Markdown files on your own computer.
           </p>
 
-          <div className="dlList">
-            {PLATFORMS.map((item) => (
-              <a key={item.platform} href={`/api/download?platform=${item.platform}`}>
-                <span>
-                  <b>{item.label}</b>
-                  <small>{item.detail}</small>
-                </span>
-                <Download aria-hidden="true" />
-              </a>
-            ))}
-            <a href={manifest.releasePage} target="_blank" rel="noreferrer">
-              <span>
-                <b>All release files</b>
-                <small>Checksums and source archives</small>
-              </span>
-              <ArrowUpRight aria-hidden="true" />
+          <div className="note">
+            <h4>Scroll down before you download</h4>
+            <p>
+              Windows and macOS will show a security warning the first time you open Daydock. What
+              that warning means and how to get past it is just below, and the download links are
+              right after it.
+            </p>
+          </div>
+
+          <div className="actions">
+            <a className="primary" href="#unsigned">
+              How to open it <ArrowDown aria-hidden="true" />
             </a>
+            <a className="ghost" href="#downloads">Skip to the downloads</a>
           </div>
         </div>
       </section>
 
-      <section className="band">
+      <section className="band" id="unsigned">
         <div className="wrap">
           <h2>Your computer will warn you. Here is why.</h2>
           <div className="note" style={{ marginTop: 26 }}>
@@ -152,6 +149,30 @@ export default function DownloadPage() {
                 <li>You can always download manually from this page instead.</li>
               </ol>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="band raised" id="downloads">
+        <div className="wrap">
+          <h2>Now pick your download.</h2>
+          <div className="dlList">
+            {PLATFORMS.map((item) => (
+              <a key={item.platform} href={`/api/download?platform=${item.platform}`}>
+                <span>
+                  <b>{item.label}</b>
+                  <small>{item.detail}</small>
+                </span>
+                <Download aria-hidden="true" />
+              </a>
+            ))}
+            <a href={manifest.releasePage} target="_blank" rel="noreferrer">
+              <span>
+                <b>All release files</b>
+                <small>Checksums and source archives</small>
+              </span>
+              <ArrowUpRight aria-hidden="true" />
+            </a>
           </div>
 
           <div className="note">

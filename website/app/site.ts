@@ -35,8 +35,8 @@ export const MILESTONES = [
   {
     amount: 20000,
     title: "A hosted version you buy once",
-    summary: "Your notebook in a browser, on a server, for a hundred years, for one payment.",
+    summary: "Your notebook in a browser, on a server, with lifetime access for one payment.",
     detail:
-      "Some people cannot install software, or want their notebook on a school Chromebook. So we will build a hosted web version and sell it the only way we are willing to: you pay once, we run it for a hundred years, and the price is what the servers cost us. No margin and no subscription.",
+      "Some people cannot install software, or want their notebook on a school Chromebook. So we will build a hosted web version and sell it the only way we are willing to: you pay once, you get lifetime access, and the price is what the servers cost us. No margin and no subscription. This is not how we plan to make money. If a sponsor covers it, or a funder gives us permission to put extra grant money toward it, we will give students lifetime access for free wherever we can.",
   },
 ] as const;

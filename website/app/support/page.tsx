@@ -136,9 +136,9 @@ export default function SupportPage() {
           </div>
 
           <div className="note">
-            <h4>About that hundred years</h4>
+            <h4>About lifetime access</h4>
             <p>
-              We know how it sounds for a young nonprofit to promise a century of anything. So here is
+              We know how it sounds for a young nonprofit to promise lifetime access to anything. So here is
               the safety net, in writing. The hosted version will be open source like the rest of
               Daydock, and your notebook stays plain Markdown files you can download at any time. If
               this foundation ever cannot keep running, you can host it yourself or move your notes
