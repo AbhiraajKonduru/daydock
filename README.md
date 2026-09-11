@@ -72,6 +72,7 @@ The `Assets/` folder is created for notebook resources, but attachment managemen
 - Full-text search across daily pages, weekly pages, and documents
 - Automatic saving with external-change detection
 - Optional GitHub sync using your existing Git installation and credentials
+- Signed in-app updates from the Daydock beta channel
 - Adjustable zoom and collapsible navigation
 - No account, database service, or required cloud provider
 
@@ -79,30 +80,29 @@ Daydock has used roughly 4 MB of RAM in my everyday use. Actual memory use varie
 
 ## Keyboard shortcuts
 
-Use `Ctrl` on Windows and Linux. Use `Cmd` where the shortcut uses the platform modifier on macOS.
-
-| Shortcut | Action |
-| --- | --- |
-| `Alt+T` | Open today |
-| `Alt+Y` | Open yesterday |
-| `Alt+O` | Open tomorrow |
-| `Alt+W` | Open this week |
-| `Alt+L` | Open last week |
-| `Alt+N` | Open next week |
-| `Alt+P` | Open or close Plan mode |
-| `Alt+D` | In Plan mode, switch between the week and today |
-| `Alt+E` | Apply a template to the current daily or weekly page |
-| `Ctrl/Cmd+K` | Search the notebook |
-| `Ctrl/Cmd+S` | Save now |
-| `Ctrl/Cmd+Shift+S` | Sync the notebook with GitHub |
-| `Ctrl/Cmd+.` | Show or hide the sidebar |
-| `Ctrl/Cmd+Shift++` | Zoom in |
-| `Ctrl/Cmd+Shift+-` | Zoom out |
-| `Ctrl/Cmd+0` | Reset zoom |
-| `Ctrl/Cmd+Enter` | Toggle the task on the current line |
-| `Ctrl+Alt+R` | Mark all tasks on the page incomplete |
-| `Ctrl+Alt+F` | Mark all tasks on the page complete |
-| `Tab` | Indent a list item |
+| Action | Windows / Linux | macOS |
+| --- | --- | --- |
+| Open today | `Alt+T` | `Cmd+1` |
+| Open yesterday | `Alt+Y` | `Cmd+2` |
+| Open tomorrow | `Alt+O` | `Cmd+3` |
+| Open last week | `Alt+L` | `Cmd+4` |
+| Open this week | `Alt+W` | `Cmd+5` |
+| Open next week | `Alt+N` | `Cmd+6` |
+| Open or close Plan mode | `Alt+P` | `Cmd+Shift+P` |
+| Switch the Plan reference | `Alt+D` | `Cmd+Shift+D` |
+| Apply a template | `Alt+E` | `Cmd+Shift+E` |
+| Search the notebook | `Ctrl+K` | `Cmd+K` |
+| Save now | `Ctrl+S` | `Cmd+S` |
+| Sync with GitHub | `Ctrl+Shift+S` | `Cmd+Shift+S` |
+| Share feedback | `Ctrl+Shift+F` | `Cmd+Shift+F` |
+| Show or hide the sidebar | `Ctrl+.` | `Cmd+Option+S` |
+| Zoom in | `Ctrl+Shift++` | `Cmd++` |
+| Zoom out | `Ctrl+Shift+-` | `Cmd+-` |
+| Reset zoom | `Ctrl+0` | `Cmd+0` |
+| Toggle the task on the current line | `Ctrl+Enter` | `Cmd+Return` |
+| Mark all page tasks incomplete | `Ctrl+Alt+R` | `Cmd+Option+R` |
+| Mark all page tasks complete | `Ctrl+Alt+F` | `Cmd+Option+F` |
+| Indent a list item | `Tab` | `Tab` |
 
 ## Your notebook stays yours
 
@@ -126,11 +126,15 @@ Download the `v0.2` prerelease from the repository's [Releases page](https://git
 
 You can also download Daydock from [daydock.vercel.app](https://daydock.vercel.app). The site was quickly generated with AI to save you from digging through the GitHub Releases page; it will be properly de-AI-slopified in the future.
 
+The website reads its version and platform installer links from the rolling beta release channel, so its download buttons advance automatically after a successful cross-platform release.
+
 - Windows: NSIS installer
 - macOS: universal DMG for Apple Silicon and Intel Macs
 - Linux, including Arch Linux: AppImage
 
 The `v0.2` builds are unsigned. Windows SmartScreen and macOS Gatekeeper may warn before opening them. Packaging for the Arch User Repository is not available yet, but the AppImage can run on Arch Linux without installing a distro-specific package.
+
+Starting with the first updater-enabled beta after `v0.2`, Daydock checks its signed beta channel in the background. When an update is available, you can install and restart from inside the app or choose **Later** and use the small toolbar reminder when it is convenient. Existing `v0.2` users must manually install that first updater-enabled beta once.
 
 ## Run locally
 
@@ -158,11 +162,13 @@ npm run tauri build
 
 Desktop bundles are written beneath `src-tauri/target/release/bundle`. Pushing a version tag such as `v0.2` runs the release workflow and creates a GitHub prerelease with builds for Windows, macOS, and Linux.
 
+Maintainer release and updater-key instructions are in [`docs/RELEASING.md`](docs/RELEASING.md).
+
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The project maintainer reviews changes for quality and fit with Daydock's vision.
 
-Possible future directions and explicit non-goals are documented in [ROADMAP.md](ROADMAP.md).
+Possible future directions and explicit non-goals are published at [daydock.vercel.app/roadmap](https://daydock.vercel.app/roadmap).
 
 ## License
 

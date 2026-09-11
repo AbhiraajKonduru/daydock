@@ -35,6 +35,10 @@ npm run build
 
 Run `npm run tauri build` when your change affects Rust, Tauri configuration, packaging, file access, or native behavior.
 
+The marketing site lives in `website/`. Copy `website/.env.example` to `website/.env.local`, then from `website/` run `npx convex dev` and `npm run dev`.
+
+Maintainers publishing a beta should also follow [`docs/RELEASING.md`](docs/RELEASING.md). Pull requests and forks must never include updater private keys.
+
 ## Pull requests
 
 Keep each pull request focused on one problem. In the description:

@@ -8,6 +8,10 @@ type Props = {
   files: NotebookFile[];
   root: string | null;
   open: boolean;
+  indexState: "idle" | "indexing" | "ready" | "error";
+  indexRevision: number;
+  indexWarning: string;
+  onRetryIndex: () => void;
   onClose: () => void;
   onChoose: (path: string) => void;
 };
@@ -49,23 +53,32 @@ function snippetFor(entry: SearchEntry, terms: string[]): string {
   return `${start > 0 ? "…" : ""}${preview.slice(start, end)}${preview.length > end ? "…" : ""}`;
 }
 
-export function SearchPalette({ files, root, open, onClose, onChoose }: Props) {
+export function SearchPalette({
+  files,
+  root,
+  open,
+  indexState,
+  indexRevision,
+  indexWarning,
+  onRetryIndex,
+  onClose,
+  onChoose,
+}: Props) {
   const [query, setQuery] = useState("");
   const [remoteResults, setRemoteResults] = useState<SearchResult[]>([]);
-  const [indexState, setIndexState] = useState<"idle" | "indexing" | "ready" | "error">("idle");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const [indexWarning, setIndexWarning] = useState("");
-  const [retryCount, setRetryCount] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const requestGeneration = useRef(0);
+  const activeQuery = useRef("");
 
   useEffect(() => {
     if (open) {
       setQuery("");
       setRemoteResults([]);
+      setSearching(false);
       setSearchError("");
-      setIndexWarning("");
+      activeQuery.current = "";
       window.setTimeout(() => input.current?.focus(), 0);
     }
   }, [open]);
@@ -81,28 +94,15 @@ export function SearchPalette({ files, root, open, onClose, onChoose }: Props) {
 
   useEffect(() => {
     if (!open || !root || !notebookStorage.native) return;
-    const generation = ++requestGeneration.current;
-    setIndexState("indexing");
-    setSearching(false);
-    void notebookStorage.prepareSearch(root).then((status) => {
-      if (requestGeneration.current !== generation) return;
-      setIndexWarning(status.warnings.length ? `${status.warnings.length} file${status.warnings.length === 1 ? "" : "s"} could not be indexed. ${status.warnings[0]}` : "");
-      setIndexState("ready");
-    }).catch((caught) => {
-      if (requestGeneration.current !== generation) return;
-      setIndexState("error");
-      setSearchError(caught instanceof Error ? caught.message : String(caught));
-    });
-    return () => { requestGeneration.current += 1; };
-  }, [open, retryCount, root]);
-
-  useEffect(() => {
-    if (!open || !root || !notebookStorage.native || indexState !== "ready") return;
     const trimmed = query.trim();
     const generation = ++requestGeneration.current;
-    setRemoteResults([]);
     setSearchError("");
+    if (activeQuery.current !== trimmed) {
+      activeQuery.current = trimmed;
+      setRemoteResults([]);
+    }
     if (!trimmed) {
+      setRemoteResults([]);
       setSearching(false);
       return;
     }
@@ -123,7 +123,7 @@ export function SearchPalette({ files, root, open, onClose, onChoose }: Props) {
       window.clearTimeout(timer);
       if (requestGeneration.current === generation) requestGeneration.current += 1;
     };
-  }, [indexState, open, query, root]);
+  }, [indexRevision, open, query, root]);
 
   const searchIndex = useMemo<SearchEntry[]>(() => files.map((file) => {
     const title = titleForFile(file);
@@ -180,12 +180,17 @@ export function SearchPalette({ files, root, open, onClose, onChoose }: Props) {
           </button>
         </div>
         <div className="search-results">
-          {notebookStorage.native && indexState === "indexing" && <p className="search-status">Indexing notebook…</p>}
           {notebookStorage.native && searchError && (
-            <div className="search-error"><p>{searchError}</p><button onClick={() => setRetryCount((value) => value + 1)}>Retry</button></div>
+            <div className="search-error"><p>{searchError}</p></div>
           )}
-          {notebookStorage.native && searching && <p className="search-status">Searching…</p>}
-          {notebookStorage.native && indexWarning && <p className="search-warning">{indexWarning}</p>}
+          {notebookStorage.native && !searchError && query.trim() && remoteResults.length === 0 && indexState === "indexing" && (
+            <p className="search-status">Preparing search…</p>
+          )}
+          {notebookStorage.native && !searchError && searching && indexState !== "indexing" && <p className="search-status">Searching…</p>}
+          {notebookStorage.native && !searchError && !searching && remoteResults.length === 0 && indexState === "error" && (
+            <div className="search-error"><p>Search indexing could not finish.</p><button onClick={onRetryIndex}>Retry</button></div>
+          )}
+          {notebookStorage.native && indexState === "ready" && indexWarning && <p className="search-warning">{indexWarning}</p>}
           {notebookStorage.native ? remoteResults.map((result) => (
             <button key={result.path} className="search-result" onClick={() => { onChoose(result.path); onClose(); }}>
               <span className="search-result-title">{result.title}</span>
@@ -206,7 +211,7 @@ export function SearchPalette({ files, root, open, onClose, onChoose }: Props) {
               <span className="search-result-snippet">{snippetFor(entry, terms)}</span>
             </button>
           ))}
-          {((notebookStorage.native ? remoteResults.length : results.length) === 0 && query.trim() && !searching && indexState !== "indexing" && !searchError) && <p className="empty-results">No pages found.</p>}
+          {((notebookStorage.native ? remoteResults.length : results.length) === 0 && query.trim() && !searching && indexState !== "indexing" && indexState !== "error" && !searchError) && <p className="empty-results">No pages found.</p>}
         </div>
       </section>
     </div>

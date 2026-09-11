@@ -13,6 +13,9 @@ use std::{
 use tauri::Manager;
 use walkdir::WalkDir;
 
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
+
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -111,8 +114,42 @@ fn git_lock_error(root: &Path, details: String) -> String {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn git_command() -> Command {
+    for candidate in [
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+        "/usr/bin/git",
+    ] {
+        if Path::new(candidate).is_file() {
+            return Command::new(candidate);
+        }
+    }
+    Command::new("git")
+}
+
+#[cfg(not(target_os = "macos"))]
+fn git_command() -> Command {
+    Command::new("git")
+}
+
+#[cfg(target_os = "windows")]
+fn missing_git_message() -> &'static str {
+    "Git is not installed or is not available on PATH. Install Git for Windows, then restart Daydock."
+}
+
+#[cfg(target_os = "macos")]
+fn missing_git_message() -> &'static str {
+    "Git is not installed. Install the Xcode Command Line Tools with `xcode-select --install`, or install Git with Homebrew, then restart Daydock."
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn missing_git_message() -> &'static str {
+    "Git is not installed or is not available on PATH. Install Git with your package manager, then restart Daydock."
+}
+
 fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let mut command = Command::new("git");
+    let mut command = git_command();
     command
         .args(args)
         .current_dir(root)
@@ -120,14 +157,13 @@ fn git(root: &Path, args: &[&str]) -> Result<String, String> {
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    let output = command.output()
-        .map_err(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                "Git is not installed or is not available on PATH. Install Git for Windows, then restart Daydock.".to_string()
-            } else {
-                error.to_string()
-            }
-        })?;
+    let output = command.output().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            missing_git_message().to_string()
+        } else {
+            error.to_string()
+        }
+    })?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -142,6 +178,30 @@ fn git(root: &Path, args: &[&str]) -> Result<String, String> {
             },
         ))
     }
+}
+
+#[tauri::command]
+fn complete_app_quit(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+fn is_allowed_website_url(url: &str) -> bool {
+    if url.chars().any(|character| character.is_control() || character.is_whitespace()) {
+        return false;
+    }
+    let path = url
+        .strip_prefix("https://daydock.vercel.app")
+        .or_else(|| url.strip_prefix("http://127.0.0.1:3000"))
+        .or_else(|| url.strip_prefix("http://localhost:3000"));
+    path.is_some_and(|rest| rest == "/feedback" || rest.starts_with("/feedback?"))
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !is_allowed_website_url(&url) {
+        return Err("Daydock can only open its feedback page from this window.".into());
+    }
+    open::that(&url).map_err(|error| error.to_string())
 }
 
 fn is_github_url(url: &str) -> bool {
@@ -413,6 +473,17 @@ fn sync_search_index(root: &Path, connection: &mut Connection) -> Result<IndexSt
                 .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
                 .map(|duration| duration.as_millis() as u64)
                 .unwrap_or(0);
+            let existing_metadata: Option<(u64, u64)> = transaction
+                .query_row(
+                    "SELECT modified, size FROM documents WHERE path = ?1",
+                    [&relative],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .ok();
+            if existing_metadata == Some((modified, metadata.len())) {
+                indexed.insert(relative.clone());
+                continue;
+            }
             let bytes = match fs::read(path) {
                 Ok(bytes) => bytes,
                 Err(error) => {
@@ -1341,9 +1412,6 @@ async fn search_notebook(root: String, query: String) -> Result<Vec<SearchResult
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let _guard = search_lock()
-            .lock()
-            .map_err(|_| "The search index lock is unavailable.".to_string())?;
         let connection = open_or_rebuild_search_database(&search_database_path(&root_path))?;
         let mut statement = connection
             .prepare(
@@ -1375,8 +1443,27 @@ async fn search_notebook(root: String, query: String) -> Result<Vec<SearchResult
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_os::init());
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::default()
+            .with_state_flags(
+                tauri_plugin_window_state::StateFlags::SIZE
+                    | tauri_plugin_window_state::StateFlags::POSITION
+                    | tauri_plugin_window_state::StateFlags::MAXIMIZED
+                    | tauri_plugin_window_state::StateFlags::FULLSCREEN,
+            )
+            .build(),
+    );
+
+    let app = builder
         .invoke_handler(tauri::generate_handler![
+            complete_app_quit,
+            open_external_url,
             select_notebook,
             initialize_notebook,
             scan_notebook,
@@ -1395,8 +1482,30 @@ pub fn run() {
             prepare_search_index,
             search_notebook
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Daydock");
+        .build(tauri::generate_context!())
+        .expect("error while building Daydock");
+
+    app.run(|_app_handle, _event| {
+        #[cfg(target_os = "macos")]
+        match _event {
+            tauri::RunEvent::ExitRequested {
+                code: None, api, ..
+            } => {
+                api.prevent_exit();
+                let _ = _app_handle.emit("daydock://quit-requested", ());
+            }
+            tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } => {
+                if let Some(window) = _app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            _ => {}
+        }
+    });
 }
 
 #[cfg(test)]
@@ -1467,6 +1576,16 @@ mod tests {
         };
         assert!(safe_notebook_path(root, "../secret.md").is_err());
         assert!(safe_notebook_path(root, "Daily/today.md").is_ok());
+    }
+
+    #[test]
+    fn only_opens_the_daydock_feedback_page() {
+        assert!(is_allowed_website_url(
+            "https://daydock.vercel.app/feedback?kind=testimonial&code=ABCD"
+        ));
+        assert!(is_allowed_website_url("http://localhost:3000/feedback"));
+        assert!(!is_allowed_website_url("https://example.com/feedback"));
+        assert!(!is_allowed_website_url("https://daydock.vercel.app/impact-admin"));
     }
 
     #[test]
@@ -1647,6 +1766,42 @@ mod tests {
         assert_eq!(version, SEARCH_SCHEMA_VERSION);
         assert_eq!(body, "# Searchable\n\nneedle\n");
         assert!(database.starts_with(&root));
+        drop(connection);
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn index_reconciliation_refreshes_changed_files_and_removes_deleted_files() {
+        let root = test_root("index-reconciliation");
+        initialize_notebook_blocking(root.to_string_lossy().to_string()).expect("initialize");
+        let document = root.join("Docs/Changing.md");
+        fs::write(&document, "# Changing\n\nfirst version\n").expect("initial document");
+        let database = search_database_path(&root);
+        let mut connection = open_or_rebuild_search_database(&database).expect("open index");
+
+        sync_search_index(&root, &mut connection).expect("initial index");
+        fs::write(&document, "# Changing\n\nsecond longer version\n").expect("changed document");
+        sync_search_index(&root, &mut connection).expect("refresh index");
+        let body: String = connection
+            .query_row(
+                "SELECT body FROM documents WHERE path = 'Docs/Changing.md'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("indexed body");
+        assert!(body.contains("second longer version"));
+
+        fs::remove_file(document).expect("delete document");
+        sync_search_index(&root, &mut connection).expect("remove from index");
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM documents WHERE path = 'Docs/Changing.md'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("indexed count");
+        assert_eq!(count, 0);
+
         drop(connection);
         fs::remove_dir_all(root).expect("cleanup");
     }

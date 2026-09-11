@@ -12,12 +12,16 @@ import {
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import type { AppCommand } from "../lib/shortcuts";
 
 type Props = {
   value: string;
   onChange: (value: string) => void;
   onOpenLink: (target: string) => void;
 };
+
+type EditorCommand = Extract<AppCommand, "toggle-current-task" | "reset-page-tasks" | "complete-page-tasks">;
+let activeEditor: EditorView | null = null;
 
 class CheckboxWidget extends WidgetType {
   constructor(
@@ -354,10 +358,27 @@ function completeAllTasks(view: EditorView): boolean {
 
 export function MarkdownEditor({ value, onChange, onOpenLink }: Props) {
   const openLinkRef = useRef(onOpenLink);
+  const editorRef = useRef<EditorView | null>(null);
 
   useEffect(() => {
     openLinkRef.current = onOpenLink;
   }, [onOpenLink]);
+
+  useEffect(() => {
+    const runMenuCommand = (event: Event) => {
+      const view = editorRef.current;
+      if (!view || activeEditor !== view) return;
+      const command = (event as CustomEvent<EditorCommand>).detail;
+      if (command === "toggle-current-task") toggleCurrentTask(view);
+      if (command === "reset-page-tasks") resetAllTasks(view);
+      if (command === "complete-page-tasks") completeAllTasks(view);
+    };
+    window.addEventListener("daydock:editor-command", runMenuCommand);
+    return () => {
+      window.removeEventListener("daydock:editor-command", runMenuCommand);
+      if (activeEditor === editorRef.current) activeEditor = null;
+    };
+  }, []);
 
   const extensions = useMemo<Extension[]>(
     () => [
@@ -368,11 +389,15 @@ export function MarkdownEditor({ value, onChange, onOpenLink }: Props) {
         { key: "Enter", run: continueList },
         { key: "Backspace", run: removeTaskMarker },
         { key: "Mod-Enter", run: toggleCurrentTask },
-        { key: "Ctrl-Alt-r", run: resetAllTasks },
-        { key: "Ctrl-Alt-f", run: completeAllTasks },
+        { key: "Mod-Alt-r", run: resetAllTasks },
+        { key: "Mod-Alt-f", run: completeAllTasks },
         indentWithTab,
       ])),
       EditorView.domEventHandlers({
+        focus(_event, view) {
+          activeEditor = view;
+          return false;
+        },
         click(event, view) {
           const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
           if (position === null) return false;
@@ -415,6 +440,7 @@ export function MarkdownEditor({ value, onChange, onOpenLink }: Props) {
       className="markdown-editor"
       value={value}
       onChange={onChange}
+      onCreateEditor={(view) => { editorRef.current = view; }}
       extensions={extensions}
       basicSetup={{
         lineNumbers: false,

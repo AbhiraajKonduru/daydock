@@ -18,12 +18,17 @@ import {
   Trash2,
   RefreshCw,
   X,
+  MessageSquare,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MarkdownEditor } from "./components/MarkdownEditor";
 import { SearchPalette } from "./components/SearchPalette";
 import { ApplyTemplateModal, TemplateManager } from "./components/TemplateManager";
+import { UpdateModal, UpdateReminder, useAppUpdater } from "./components/AppUpdater";
+import { FeedbackModal } from "./components/FeedbackModal";
 import {
   BUILTIN_DAILY_TEMPLATE,
   BUILTIN_WEEKLY_TEMPLATE,
@@ -45,6 +50,9 @@ import {
   documentPath,
 } from "./lib/documents";
 import { notebookStorage } from "./lib/storage";
+import { installMacosMenu } from "./lib/macosMenu";
+import { APP_PLATFORM, IS_MACOS } from "./lib/platform";
+import { commandForKeyboardEvent, shortcutLabel, type AppCommand } from "./lib/shortcuts";
 import type { GitStatus, NotebookFile, SaveState, TemplateKind, TemplateSettings } from "./types";
 
 const ROOT_KEY = "daydock-root";
@@ -312,6 +320,9 @@ export default function App() {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [error, setError] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchIndexState, setSearchIndexState] = useState<"idle" | "indexing" | "ready" | "error">("idle");
+  const [searchIndexRevision, setSearchIndexRevision] = useState(0);
+  const [searchIndexWarning, setSearchIndexWarning] = useState("");
   const [documentModalOpen, setDocumentModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<NotebookFile | null>(null);
   const [renameTarget, setRenameTarget] = useState<NotebookFile | null>(null);
@@ -338,6 +349,18 @@ export default function App() {
   });
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const updater = useAppUpdater(
+    notebookStorage.native && !import.meta.env.DEV,
+    !loading
+      && !searchOpen
+      && !documentModalOpen
+      && !deleteTarget
+      && !renameTarget
+      && !githubSyncModalOpen
+      && !applyTemplateOpen
+      && !feedbackOpen,
+  );
 
   const saveTimer = useRef<number | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
@@ -360,6 +383,12 @@ export default function App() {
   const planTodayContentRef = useRef(planTodayContent);
   const planTodayDiskModifiedRef = useRef(0);
   const syncShortcutRef = useRef<() => void>(() => {});
+  const appCommandRef = useRef<(command: AppCommand) => void>(() => {});
+  const closingWindowRef = useRef(false);
+  const quittingRef = useRef(false);
+  const searchIndexRunRef = useRef<Promise<void> | null>(null);
+  const searchIndexQueuedRef = useRef(false);
+  const searchIndexRootRef = useRef<string | null>(null);
 
   useEffect(() => {
     activePathRef.current = activePath;
@@ -399,6 +428,40 @@ export default function App() {
     };
   }, [documentMenu]);
 
+  const refreshSearchIndex = useCallback((notebookRoot: string) => {
+    if (!notebookStorage.native) return;
+    searchIndexRootRef.current = notebookRoot;
+    if (searchIndexRunRef.current) {
+      searchIndexQueuedRef.current = true;
+      return;
+    }
+
+    const operation = (async () => {
+      do {
+        searchIndexQueuedRef.current = false;
+        const indexingRoot = searchIndexRootRef.current;
+        if (!indexingRoot) return;
+        setSearchIndexState("indexing");
+        try {
+          const status = await notebookStorage.prepareSearch(indexingRoot);
+          if (searchIndexRootRef.current !== indexingRoot) continue;
+          setSearchIndexWarning(status.warnings.length
+            ? `${status.warnings.length} file${status.warnings.length === 1 ? "" : "s"} could not be indexed. ${status.warnings[0]}`
+            : "");
+          setSearchIndexState("ready");
+          setSearchIndexRevision((revision) => revision + 1);
+        } catch {
+          if (searchIndexRootRef.current === indexingRoot) setSearchIndexState("error");
+        }
+      } while (searchIndexQueuedRef.current);
+    })();
+
+    searchIndexRunRef.current = operation;
+    void operation.finally(() => {
+      if (searchIndexRunRef.current === operation) searchIndexRunRef.current = null;
+    });
+  }, []);
+
   const bootstrap = useCallback(async (notebookRoot: string) => {
     setLoading(true);
     setError("");
@@ -434,6 +497,7 @@ export default function App() {
       activeDiskModifiedRef.current = todayFile.modified;
       dirty.current = false;
       setSaveState("saved");
+      refreshSearchIndex(notebookRoot);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       if (notebookStorage.native) {
@@ -443,7 +507,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshSearchIndex]);
 
   useEffect(() => {
     if (root) void bootstrap(root);
@@ -460,6 +524,10 @@ export default function App() {
         const scanned = await notebookStorage.scan(root);
         if (stopped) return;
         const previous = filesRef.current;
+        const notebookChanged = scanned.length !== previous.length || scanned.some((diskFile) => {
+          const existing = previous.find((file) => file.path === diskFile.path);
+          return !existing || existing.modified !== diskFile.modified;
+        });
         const merged = scanned.map((diskFile) => {
           const existing = previous.find((file) => file.path === diskFile.path);
           // A scan can observe our write before its invoke promise resolves. Keep
@@ -469,6 +537,7 @@ export default function App() {
         });
         filesRef.current = merged;
         setFiles(merged);
+        if (notebookChanged) refreshSearchIndex(root);
 
         const active = activePathRef.current;
         const before = previous.find((file) => file.path === active);
@@ -526,7 +595,7 @@ export default function App() {
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, [root]);
+  }, [refreshSearchIndex, root]);
 
   const refreshGitStatus = useCallback(async (notebookRoot: string) => {
     if (!notebookStorage.native) return;
@@ -866,88 +935,6 @@ export default function App() {
     [files, openPath],
   );
 
-  useEffect(() => {
-    const shortcuts = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "r") {
-        event.preventDefault();
-        return;
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setSearchOpen(true);
-      }
-      if (event.altKey && event.key.toLowerCase() === "t") {
-        event.preventDefault();
-        void openPath(dailyPath());
-      }
-      if (event.altKey && event.key.toLowerCase() === "y") {
-        event.preventDefault();
-        void openPath(dailyPath(shiftDate(dateKey(), -1)));
-      }
-      if (event.altKey && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        void openPath(dailyPath(shiftDate(dateKey(), 1)));
-      }
-      if (event.altKey && event.key.toLowerCase() === "w") {
-        event.preventDefault();
-        void openPath(weeklyPath());
-      }
-      if (event.altKey && event.key.toLowerCase() === "l") {
-        event.preventDefault();
-        void openPath(weeklyPath(dateFromKey(shiftDate(dateKey(), -7))));
-      }
-      if (event.altKey && event.key.toLowerCase() === "n") {
-        event.preventDefault();
-        void openPath(weeklyPath(dateFromKey(shiftDate(dateKey(), 7))));
-      }
-      if (event.altKey && event.key.toLowerCase() === "p") {
-        event.preventDefault();
-        void togglePlanMode();
-      }
-      if (event.altKey && event.key.toLowerCase() === "d" && planMode) {
-        event.preventDefault();
-        void togglePlanReference();
-      }
-      if (event.altKey && event.key.toLowerCase() === "e") {
-        const path = activePathRef.current;
-        if (/^(?:Daily\/\d{4}-\d{2}-\d{2}|Weekly\/\d{4}-W\d{2})\.md$/.test(path)) {
-          event.preventDefault();
-          setApplyTemplateOpen(true);
-        }
-      }
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        syncShortcutRef.current();
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        void flushSave();
-        void flushPlanSave();
-      }
-      if ((event.ctrlKey || event.metaKey) && event.code === "Period") {
-        event.preventDefault();
-        setSidebarCollapsed((current) => {
-          const next = !current;
-          localStorage.setItem(SIDEBAR_KEY, String(next));
-          return next;
-        });
-      }
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.code === "Equal" || event.code === "NumpadAdd" || event.key === "+")) {
-        event.preventDefault();
-        setZoom((current) => Math.min(MAX_ZOOM, current + ZOOM_STEP));
-      }
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.code === "Minus" || event.code === "NumpadSubtract" || event.key === "_")) {
-        event.preventDefault();
-        setZoom((current) => Math.max(MIN_ZOOM, current - ZOOM_STEP));
-      }
-      if ((event.ctrlKey || event.metaKey) && (event.code === "Digit0" || event.code === "Numpad0")) {
-        event.preventDefault();
-        setZoom(DEFAULT_ZOOM);
-      }
-    };
-    window.addEventListener("keydown", shortcuts);
-    return () => window.removeEventListener("keydown", shortcuts);
-  }, [flushPlanSave, flushSave, openPath, planMode, togglePlanMode, togglePlanReference]);
-
   const createDocument = async (name: string) => {
     setDocumentModalOpen(false);
     await openPath(documentPath(name));
@@ -1195,11 +1182,13 @@ export default function App() {
               ? titleForFile(activeFile)
               : "Daydock";
 
-  const toggleSidebar = () => {
-    const next = !sidebarCollapsed;
-    setSidebarCollapsed(next);
-    localStorage.setItem(SIDEBAR_KEY, String(next));
-  };
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      localStorage.setItem(SIDEBAR_KEY, String(next));
+      return next;
+    });
+  }, []);
 
   const minimizeWindow = () => {
     if (notebookStorage.native) void getCurrentWindow().minimize();
@@ -1209,15 +1198,38 @@ export default function App() {
     if (notebookStorage.native) void getCurrentWindow().toggleMaximize();
   };
 
-  const closeWindow = async () => {
-    if (!notebookStorage.native) return;
+  const flushAll = useCallback(async () => {
     await flushSave();
     await flushPlanSave();
     await flushPlanTodaySave();
-    await getCurrentWindow().close();
-  };
+    if (dirty.current || planDirty.current || planTodayDirty.current) {
+      throw new Error("One or more open pages could not be saved. Resolve the save error, then try again.");
+    }
+  }, [flushPlanSave, flushPlanTodaySave, flushSave]);
 
-  const syncNotebook = async () => {
+  const closeWindow = useCallback(async () => {
+    if (!notebookStorage.native) return;
+    if (IS_MACOS) {
+      await getCurrentWindow().close();
+      return;
+    }
+    await flushAll();
+    await getCurrentWindow().close();
+  }, [flushAll]);
+
+  const quitApplication = useCallback(async () => {
+    if (!notebookStorage.native || quittingRef.current) return;
+    quittingRef.current = true;
+    try {
+      await flushAll();
+      await invoke("complete_app_quit");
+    } catch (caught) {
+      quittingRef.current = false;
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [flushAll]);
+
+  const syncNotebook = useCallback(async () => {
     if (!root || syncingRef.current) return;
     if (!gitStatus?.configured) {
       setGithubSyncModalOpen(true);
@@ -1242,7 +1254,7 @@ export default function App() {
       syncingRef.current = false;
       setSyncing(false);
     }
-  };
+  }, [bootstrap, flushPlanSave, flushPlanTodaySave, flushSave, gitStatus?.configured, refreshGitStatus, root]);
 
   syncShortcutRef.current = () => void syncNotebook();
 
@@ -1268,21 +1280,183 @@ export default function App() {
     }
   };
 
+  const executeAppCommand = useCallback((command: AppCommand) => {
+    switch (command) {
+      case "block-reload":
+        return;
+      case "open-today":
+        void openPath(dailyPath());
+        return;
+      case "open-yesterday":
+        void openPath(dailyPath(shiftDate(dateKey(), -1)));
+        return;
+      case "open-tomorrow":
+        void openPath(dailyPath(shiftDate(dateKey(), 1)));
+        return;
+      case "open-last-week":
+        void openPath(weeklyPath(dateFromKey(shiftDate(dateKey(), -7))));
+        return;
+      case "open-this-week":
+        void openPath(weeklyPath());
+        return;
+      case "open-next-week":
+        void openPath(weeklyPath(dateFromKey(shiftDate(dateKey(), 7))));
+        return;
+      case "search":
+        setSearchOpen(true);
+        return;
+      case "save":
+        void flushAll().catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+        return;
+      case "sync":
+        syncShortcutRef.current();
+        return;
+      case "toggle-sidebar":
+        toggleSidebar();
+        return;
+      case "zoom-in":
+        setZoom((current) => Math.min(MAX_ZOOM, current + ZOOM_STEP));
+        return;
+      case "zoom-out":
+        setZoom((current) => Math.max(MIN_ZOOM, current - ZOOM_STEP));
+        return;
+      case "zoom-reset":
+        setZoom(DEFAULT_ZOOM);
+        return;
+      case "toggle-plan":
+        void togglePlanMode();
+        return;
+      case "toggle-plan-reference":
+        if (planMode) void togglePlanReference();
+        return;
+      case "apply-template":
+        if (/^(?:Daily\/\d{4}-\d{2}-\d{2}|Weekly\/\d{4}-W\d{2})\.md$/.test(activePathRef.current)) {
+          setApplyTemplateOpen(true);
+        }
+        return;
+      case "toggle-current-task":
+      case "reset-page-tasks":
+      case "complete-page-tasks":
+        window.dispatchEvent(new CustomEvent("daydock:editor-command", { detail: command }));
+        return;
+      case "close-window":
+        void closeWindow();
+        return;
+      case "quit-app":
+        void quitApplication();
+        return;
+      case "share-feedback":
+        setFeedbackOpen(true);
+        return;
+    }
+  }, [closeWindow, flushAll, openPath, planMode, quitApplication, togglePlanMode, togglePlanReference, toggleSidebar]);
+
+  appCommandRef.current = executeAppCommand;
+
+  useEffect(() => {
+    document.documentElement.dataset.platform = APP_PLATFORM;
+    if (!notebookStorage.native || !IS_MACOS) return;
+
+    let disposed = false;
+    let removeResizeListener: (() => void) | undefined;
+    const updateFullscreenState = async () => {
+      const fullscreen = await getCurrentWindow().isFullscreen();
+      if (!disposed) document.documentElement.dataset.fullscreen = String(fullscreen);
+    };
+
+    void updateFullscreenState();
+    void getCurrentWindow().onResized(() => void updateFullscreenState()).then((remove) => {
+      if (disposed) remove();
+      else removeResizeListener = remove;
+    });
+    return () => {
+      disposed = true;
+      removeResizeListener?.();
+      delete document.documentElement.dataset.fullscreen;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!notebookStorage.native || !IS_MACOS) return;
+    void installMacosMenu((command) => appCommandRef.current(command)).catch((caught) => {
+      setError(`The macOS application menu could not be created: ${caught instanceof Error ? caught.message : String(caught)}`);
+    });
+  }, [executeAppCommand]);
+
+  useEffect(() => {
+    if (!notebookStorage.native || !IS_MACOS) return;
+    let disposed = false;
+    let removeCloseListener: (() => void) | undefined;
+    void getCurrentWindow().onCloseRequested((event) => {
+      event.preventDefault();
+      if (closingWindowRef.current) return;
+      closingWindowRef.current = true;
+      void flushAll()
+        .then(() => getCurrentWindow().hide())
+        .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))
+        .finally(() => { closingWindowRef.current = false; });
+    }).then((remove) => {
+      if (disposed) remove();
+      else removeCloseListener = remove;
+    });
+    return () => {
+      disposed = true;
+      removeCloseListener?.();
+    };
+  }, [flushAll]);
+
+  useEffect(() => {
+    if (!notebookStorage.native || !IS_MACOS) return;
+    let disposed = false;
+    let removeQuitListener: (() => void) | undefined;
+    void listen("daydock://quit-requested", () => void quitApplication()).then((remove) => {
+      if (disposed) remove();
+      else removeQuitListener = remove;
+    });
+    return () => {
+      disposed = true;
+      removeQuitListener?.();
+    };
+  }, [quitApplication]);
+
+  useEffect(() => {
+    const shortcuts = (event: KeyboardEvent) => {
+      if (notebookStorage.native && IS_MACOS) {
+        if (event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "r") {
+          event.preventDefault();
+        }
+        return;
+      }
+      const command = commandForKeyboardEvent(event, APP_PLATFORM);
+      if (!command) return;
+      event.preventDefault();
+      appCommandRef.current(command);
+    };
+    window.addEventListener("keydown", shortcuts);
+    return () => window.removeEventListener("keydown", shortcuts);
+  }, []);
+
+  const prepareForUpdate = flushAll;
+
   if (!root) {
     return (
-      <main className="welcome-screen">
-        <div className="welcome-mark"><BookOpen size={34} /></div>
-        <p className="eyebrow">Daydock</p>
-        <h1>Your day, without the machinery.</h1>
-        <p className="welcome-copy">
-          Choose a normal folder. Your daily pages, weekly pages, and documents stay there as plain Markdown, readable with or without this app.
-        </p>
-        <button className="primary-button choose-folder" onClick={chooseFolder}>
-          <FolderOpen size={18} /> Choose notebook folder
-        </button>
-        <p className="welcome-detail">No account. No cloud requirement. No proprietary format.</p>
-        {error && <p className="error-message">{error}</p>}
-      </main>
+      <>
+        <main className="welcome-screen" data-tauri-drag-region>
+          <div className="welcome-mark"><BookOpen size={34} /></div>
+          <p className="eyebrow">Daydock</p>
+          <h1>Your day, without the machinery.</h1>
+          <p className="welcome-copy">
+            Choose a normal folder. Your daily pages, weekly pages, and documents stay there as plain Markdown, readable with or without this app.
+          </p>
+          <button className="primary-button choose-folder" onClick={chooseFolder}>
+            <FolderOpen size={18} /> Choose notebook folder
+          </button>
+          <p className="welcome-detail">No account. No cloud requirement. No proprietary format.</p>
+          {error && <p className="error-message">{error}</p>}
+        </main>
+        <UpdateModal updater={updater} beforeInstall={prepareForUpdate} />
+        <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      </>
     );
   }
 
@@ -1307,25 +1481,25 @@ export default function App() {
 
         <nav className="primary-nav" aria-label="Notebook">
           <button className={activePath === dailyPath() ? "active" : ""} onClick={() => void openPath(dailyPath())}>
-            <Sparkles size={18} /><span>Today</span><kbd>Alt T</kbd>
+            <Sparkles size={18} /><span>Today</span><kbd>{shortcutLabel("open-today", APP_PLATFORM)}</kbd>
           </button>
           <button className={activePath === dailyPath(shiftDate(dateKey(), -1)) ? "active" : ""} onClick={() => void openPath(dailyPath(shiftDate(dateKey(), -1)))}>
-            <CalendarDays size={18} /><span>Yesterday</span><kbd>Alt Y</kbd>
+            <CalendarDays size={18} /><span>Yesterday</span><kbd>{shortcutLabel("open-yesterday", APP_PLATFORM)}</kbd>
           </button>
           <button className={activePath === dailyPath(shiftDate(dateKey(), 1)) ? "active" : ""} onClick={() => void openPath(dailyPath(shiftDate(dateKey(), 1)))}>
-            <CalendarDays size={18} /><span>Tomorrow</span><kbd>Alt O</kbd>
+            <CalendarDays size={18} /><span>Tomorrow</span><kbd>{shortcutLabel("open-tomorrow", APP_PLATFORM)}</kbd>
           </button>
           <button className={activePath === weeklyPath(dateFromKey(shiftDate(dateKey(), -7))) ? "active" : ""} onClick={() => void openPath(weeklyPath(dateFromKey(shiftDate(dateKey(), -7))))}>
-            <BookOpen size={18} /><span>Last week</span><kbd>Alt L</kbd>
+            <BookOpen size={18} /><span>Last week</span><kbd>{shortcutLabel("open-last-week", APP_PLATFORM)}</kbd>
           </button>
           <button className={activePath === weeklyPath() ? "active" : ""} onClick={() => void openPath(weeklyPath())}>
-            <BookOpen size={18} /><span>This week</span><kbd>Alt W</kbd>
+            <BookOpen size={18} /><span>This week</span><kbd>{shortcutLabel("open-this-week", APP_PLATFORM)}</kbd>
           </button>
           <button className={activePath === weeklyPath(dateFromKey(shiftDate(dateKey(), 7))) ? "active" : ""} onClick={() => void openPath(weeklyPath(dateFromKey(shiftDate(dateKey(), 7))))}>
-            <BookOpen size={18} /><span>Next week</span><kbd>Alt N</kbd>
+            <BookOpen size={18} /><span>Next week</span><kbd>{shortcutLabel("open-next-week", APP_PLATFORM)}</kbd>
           </button>
           <button onClick={() => setSearchOpen(true)}>
-            <Search size={18} /><span>Search</span><kbd>Ctrl K</kbd>
+            <Search size={18} /><span>Search</span><kbd>{shortcutLabel("search", APP_PLATFORM)}</kbd>
           </button>
         </nav>
 
@@ -1381,6 +1555,10 @@ export default function App() {
           <LayoutTemplate size={16} />
           <span><small>Customize</small>Templates</span>
         </button>
+        <button className={`templates-switcher ${feedbackOpen ? "active" : ""}`} onClick={() => setFeedbackOpen(true)}>
+          <MessageSquare size={16} />
+          <span><small>{shortcutLabel("share-feedback", APP_PLATFORM)}</small>Share feedback</span>
+        </button>
         <button className="folder-switcher" onClick={chooseFolder} title={root}>
           <Settings2 size={16} />
           <span><small>Notebook folder</small>{nameFromRoot(root)}</span>
@@ -1410,20 +1588,21 @@ export default function App() {
                 className={`sync-button ${syncing ? "syncing" : ""}`}
                 onClick={() => void syncNotebook()}
                 disabled={syncing}
-                title={gitStatus?.configured ? "Sync notebook with GitHub (Ctrl+Shift+S)" : "Connect this notebook to GitHub (Ctrl+Shift+S)"}
+                title={`${gitStatus?.configured ? "Sync notebook with GitHub" : "Connect this notebook to GitHub"} (${shortcutLabel("sync", APP_PLATFORM)})`}
               >
                 <RefreshCw size={15} className={syncing ? "spin" : ""} />
                 <span>{syncing ? "Syncing…" : gitStatus?.configured ? "Sync" : "Connect GitHub"}</span>
               </button>
             )}
-            <button className="toolbar-search icon-button" onClick={() => setSearchOpen(true)} aria-label="Search notebook" title="Search notebook (Ctrl+K)">
+            <UpdateReminder updater={updater} />
+            <button className="toolbar-search icon-button" onClick={() => setSearchOpen(true)} aria-label="Search notebook" title={`Search notebook (${shortcutLabel("search", APP_PLATFORM)})`}>
               <Search size={18} />
             </button>
             <button
               className={`plan-button ${planMode ? "active" : ""}`}
               onClick={() => void togglePlanMode()}
               aria-pressed={planMode}
-              title={planMode ? "Close planning view (Alt+P)" : "Open planning view (Alt+P)"}
+              title={`${planMode ? "Close planning view" : "Open planning view"} (${shortcutLabel("toggle-plan", APP_PLATFORM)})`}
             >
               <PanelsTopLeft size={16} /> {planMode ? "Close plan" : "Plan"}
             </button>
@@ -1432,13 +1611,13 @@ export default function App() {
                 className={`plan-button ${planReference === "today" ? "active" : ""}`}
                 onClick={() => void togglePlanReference()}
                 aria-pressed={planReference === "today"}
-                title={planReference === "today" ? "Show weekly plan beside tomorrow (Alt+D)" : "Show today beside tomorrow (Alt+D)"}
+                title={`${planReference === "today" ? "Show weekly plan beside tomorrow" : "Show today beside tomorrow"} (${shortcutLabel("toggle-plan-reference", APP_PLATFORM)})`}
               >
                 <CalendarDays size={16} /> {planReference === "today" ? "Week" : "Today"}
               </button>
             )}
           </div>
-          {notebookStorage.native && (
+          {notebookStorage.native && !IS_MACOS && (
             <div className="window-controls">
               <button onClick={minimizeWindow} aria-label="Minimize window"><Minus size={16} /></button>
               <button onClick={maximizeWindow} aria-label="Maximize window"><Square size={12} /></button>
@@ -1524,7 +1703,17 @@ export default function App() {
         </div>
       )}
 
-      <SearchPalette files={files} root={root} open={searchOpen} onClose={() => setSearchOpen(false)} onChoose={(path) => void openPath(path)} />
+      <SearchPalette
+        files={files}
+        root={root}
+        open={searchOpen}
+        indexState={searchIndexState}
+        indexRevision={searchIndexRevision}
+        indexWarning={searchIndexWarning}
+        onRetryIndex={() => refreshSearchIndex(root)}
+        onClose={() => setSearchOpen(false)}
+        onChoose={(path) => void openPath(path)}
+      />
       <ApplyTemplateModal
         open={applyTemplateOpen}
         files={files}
@@ -1538,6 +1727,8 @@ export default function App() {
       <RenameDocumentModal file={renameTarget} files={files} onClose={() => setRenameTarget(null)} onRename={(name) => void renameDocument(name)} />
       <DeleteDocumentModal file={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => void confirmDeleteDocument()} />
       <GithubSyncModal open={githubSyncModalOpen} syncing={syncing} onClose={() => setGithubSyncModalOpen(false)} onConnect={(remoteUrl) => void connectGithubSync(remoteUrl)} />
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      <UpdateModal updater={updater} beforeInstall={prepareForUpdate} />
     </div>
   );
 }
