@@ -15,7 +15,7 @@ If the signing key must be rotated, ship an app version that trusts the new publ
 
 ## Apple signing and notarization
 
-macOS releases must be signed with an Apple Developer ID Application certificate and notarized. The release workflow intentionally fails its macOS job instead of publishing an ad-hoc-signed build when any required secret is missing.
+For normal public distribution, macOS releases should be signed with an Apple Developer ID Application certificate and notarized. During the current unsigned beta phase, the workflow falls back to ad-hoc signing when any required Apple secret is missing so one platform cannot block the Windows and Linux release.
 
 Add these GitHub Actions repository secrets:
 
@@ -26,7 +26,9 @@ Add these GitHub Actions repository secrets:
 - `APPLE_PASSWORD`: an app-specific password created for that Apple ID.
 - `APPLE_TEAM_ID`: the ten-character Apple Developer Team ID.
 
-The workflow imports the certificate into an ephemeral keychain, discovers its full signing identity, and supplies the Apple credentials to Tauri. Tauri signs the app, submits it for notarization, and staples the notarization ticket to the distributed bundle. Keep these secrets separate from `TAURI_SIGNING_PRIVATE_KEY`; the latter protects updater authenticity and does not satisfy Gatekeeper.
+When all six secrets are available, the workflow imports the certificate into an ephemeral keychain, discovers its full signing identity, and supplies the Apple credentials to Tauri. Tauri signs the app, submits it for notarization, and staples the notarization ticket to the distributed bundle. Keep these secrets separate from `TAURI_SIGNING_PRIVATE_KEY`; the latter protects updater authenticity and does not satisfy Gatekeeper.
+
+Until those credentials are configured, the workflow publishes an unsigned macOS beta instead of failing the entire release. macOS will show a Gatekeeper warning on first launch, but the updater artifact is still independently signed with the Tauri updater key.
 
 ## Create a beta release
 

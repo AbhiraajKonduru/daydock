@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -38,7 +38,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm
@@ -59,7 +59,7 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Import Apple Developer ID certificate
+      - name: Configure Apple code signing
         if: matrix.platform == 'macos-latest'
         shell: bash
         env:
@@ -71,8 +71,9 @@ jobs:
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           if [[ -z "$APPLE_CERTIFICATE" || -z "$APPLE_CERTIFICATE_PASSWORD" || -z "$APPLE_ID" || -z "$APPLE_PASSWORD" || -z "$APPLE_TEAM_ID" || -z "$KEYCHAIN_PASSWORD" ]]; then
-            echo "::error::macOS releases require the Apple signing and notarization secrets documented in docs/RELEASING.md."
-            exit 1
+            echo "::warning::Apple signing secrets are incomplete; publishing an unsigned macOS beta."
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            exit 0
           fi
 
           CERTIFICATE_PATH="$RUNNER_TEMP/daydock-certificate.p12"
@@ -114,7 +115,7 @@ jobs:
             - macOS: universal DMG for Apple Silicon and Intel Macs
             - Linux, including Arch Linux: AppImage
 
-            The macOS build is signed with a Developer ID certificate and notarized by Apple. Updater packages are independently signed with Daydock's Tauri updater key.
+            Updater packages are signed with Daydock's Tauri updater key. Platform code signing is applied when signing credentials are configured; otherwise beta installers may trigger an operating-system security warning.
           releaseDraft: false
           prerelease: true
           generateReleaseNotes: true
