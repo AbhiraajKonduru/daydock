@@ -15,6 +15,7 @@
   --line-soft: #292826;
   --accent: #dc7959;
   --accent-soft: #38251f;
+  --selection: #594139;
   --green: #92aa98;
   --app-zoom: 1;
 }
@@ -152,7 +153,7 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 
 .icon-button { width: 32px; height: 32px; display: inline-grid; place-items: center; border: 0; background: transparent; border-radius: 7px; cursor: pointer; color: #85837d; padding: 0; }
 .icon-button:hover { color: var(--ink); background: #292927; }
-.page-wrap { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #47453f transparent; }
+.page-wrap { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: smooth; scrollbar-width: thin; scrollbar-color: #47453f transparent; }
 .markdown-editor { width: min(100%, 800px); margin: 0 auto; padding: 88px 52px 200px; min-height: 100%; }
 
 .page-wrap.plan-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); overflow: hidden; }
@@ -180,7 +181,7 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 .set-active-button { height: 29px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid #4b5e4e; border-radius: 7px; background: #202921; color: #b8ceb9; cursor: pointer; font-size: 9px; font-weight: 700; }
 .set-active-button:hover { background: #27332a; }
 .template-delete-button:hover { background: #432522; color: #f09a88; }
-.template-editor-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.template-editor-scroll { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: smooth; }
 .template-editor-scroll .markdown-editor { padding-top: 62px; }
 .apply-template-modal .modal-heading p { margin: 7px 0 0; color: #8d8a83; font-size: 10px; }
 .apply-template-list { max-height: 280px; overflow-y: auto; display: grid; gap: 4px; }
@@ -192,7 +193,7 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 .weekly-plan-panel { border-right: 1px solid var(--line); background: #191918; }
 .plan-panel-label { height: 34px; flex: 0 0 34px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid var(--line-soft); color: #c5c2bb; font-size: 10px; font-weight: 700; }
 .plan-panel-label small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #66645e; font: 8px "DM Mono", monospace; font-weight: 400; }
-.plan-editor-wrap { min-height: 0; flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #47453f transparent; }
+.plan-editor-wrap { min-height: 0; flex: 1; overflow-y: auto; scroll-behavior: smooth; scrollbar-width: thin; scrollbar-color: #47453f transparent; }
 .plan-editor-wrap .markdown-editor { width: 100%; padding: 52px 36px 150px; }
 .plan-editor-wrap .cm-notebook-h1 { font-size: 34px; }
 
@@ -212,9 +213,38 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
   background: #4c4740;
 }
 .markdown-editor .cm-blank-line { min-height: 13px !important; height: 13px; line-height: 13px !important; }
-.markdown-editor .cm-selectionBackground { background: #574138 !important; }
+.markdown-editor .cm-selectionLayer > .cm-selectionBackground {
+  background: var(--selection) !important;
+  box-shadow: 0 -1px 0 var(--selection), 0 1px 0 var(--selection);
+}
+.markdown-editor .cm-selectionLayer > .cm-selectionBackground:first-child::before,
+.markdown-editor .cm-selectionLayer > .cm-selectionBackground:last-child::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  background: var(--selection);
+}
+.markdown-editor .cm-selectionLayer > .cm-selectionBackground:first-child::before {
+  left: -3px;
+  border-radius: 3px 0 0 3px;
+}
+.markdown-editor .cm-selectionLayer > .cm-selectionBackground:last-child::after {
+  right: -3px;
+  border-radius: 0 3px 3px 0;
+}
 .markdown-editor .cm-content ::selection { background: transparent; }
-.markdown-editor .cm-cursor { border-left: 1.5px solid var(--accent); }
+.markdown-editor .cm-cursor {
+  width: 2px;
+  margin-left: -1px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(220, 121, 89, .12);
+  transform: scaleY(.8);
+  transform-origin: center;
+}
 .markdown-editor .cm-gutters { display: none; }
 .markdown-editor .ͼb { color: #bba789; }
 .markdown-editor .ͼc { color: #d98a6f; }
