@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "daydock"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "open",
  "regex",
@@ -756,6 +756,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "tempfile",
  "walkdir",
 ]
 

@@ -84,6 +84,7 @@ The `Assets/` folder is created for notebook resources, but attachment managemen
 - Side-by-side planning for tomorrow
 - Reusable documents and wiki-style links
 - Interactive Markdown checkboxes and live formatting
+- Native slash-command plugins for inline or centered time blocks and daily focus capacity
 - Full-text search across daily pages, weekly pages, and documents
 - Automatic saving with external-change detection
 - Optional GitHub sync using your existing Git installation and credentials
@@ -118,6 +119,22 @@ Daydock has used roughly 4 MB of RAM in my everyday use. Actual memory use varie
 | Mark all page tasks incomplete | `Ctrl+Alt+R` | `Cmd+Option+R` |
 | Mark all page tasks complete | `Ctrl+Alt+F` | `Cmd+Option+F` |
 | Indent a list item | `Tab` | `Tab` |
+
+## Time blocks and focus capacity
+
+Type `/block 1h` after a task to add an inline countdown, or type it on an empty
+line to add a centered focus block. Type `/time 2h School` to reserve or record
+focus time without creating a timer. Type `/capacity 4h` on an empty line to
+compare timed blocks and static time entries with the focus time available.
+Slash commands are also available in templates. A complete directive such as
+`/capacity 4h` runs whenever a page is created; bare `/capacity` stays on each
+new page until you supply that day's available time.
+
+Timer transitions are saved immediately. The live countdown is derived from
+saved timestamps, so the Markdown file is not rewritten every second. The task
+line stays compact and detailed session history is kept in a hidden, readable
+Daydock state footer at the end of the same file. See
+[`docs/PLUGINS.md`](docs/PLUGINS.md) for the format and contributor API.
 
 ## Your notebook stays yours
 

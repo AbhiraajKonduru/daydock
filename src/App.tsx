@@ -1,10 +1,11 @@
 import {
+  AlertCircle,
   BookOpen,
   CalendarDays,
+  CheckCircle2,
   ChevronLeft,
   FilePlus2,
   FolderOpen,
-  LayoutTemplate,
   Menu,
   Minus,
   PanelLeftClose,
@@ -18,7 +19,6 @@ import {
   Trash2,
   RefreshCw,
   X,
-  MessageSquare,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -29,6 +29,7 @@ import { SearchPalette } from "./components/SearchPalette";
 import { ApplyTemplateModal, TemplateManager } from "./components/TemplateManager";
 import { UpdateModal, UpdateReminder, useAppUpdater } from "./components/AppUpdater";
 import { FeedbackModal } from "./components/FeedbackModal";
+import { SettingsPage, type SettingsSection } from "./components/SettingsPage";
 import {
   BUILTIN_DAILY_TEMPLATE,
   BUILTIN_WEEKLY_TEMPLATE,
@@ -47,6 +48,7 @@ import {
   documentDisplayName,
   documentFileStem,
   documentNameIssue,
+  documentLinkNames,
   documentPath,
 } from "./lib/documents";
 import { notebookStorage } from "./lib/storage";
@@ -343,11 +345,23 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const syncingRef = useRef(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [syncToastHovered, setSyncToastHovered] = useState(false);
+
+  useEffect(() => {
+    if (!syncMessage) {
+      setSyncToastHovered(false);
+      return;
+    }
+    if (syncToastHovered) return;
+    const timer = window.setTimeout(() => setSyncMessage(""), 4500);
+    return () => window.clearTimeout(timer);
+  }, [syncMessage, syncToastHovered]);
   const [templateSettings, setTemplateSettings] = useState<TemplateSettings>({
     daily: "Templates/Daily/Default.md",
     weekly: "Templates/Weekly/Default.md",
   });
-  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("templates");
   const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const updater = useAppUpdater(
@@ -363,7 +377,7 @@ export default function App() {
   );
 
   const saveTimer = useRef<number | null>(null);
-  const saveInFlightRef = useRef<Promise<void> | null>(null);
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null);
   const planSaveTimer = useRef<number | null>(null);
   const planTodaySaveTimer = useRef<number | null>(null);
   const dirty = useRef(false);
@@ -626,19 +640,18 @@ export default function App() {
     }
   };
 
-  const flushSave = useCallback(async () => {
+  const flushSave = useCallback(async (): Promise<boolean> => {
     if (saveTimer.current !== null) {
       window.clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
     if (saveInFlightRef.current) {
-      await saveInFlightRef.current;
-      return;
+      return saveInFlightRef.current;
     }
-    if (!dirty.current || !root || !activePathRef.current) return;
+    if (!dirty.current || !root || !activePathRef.current) return true;
 
     // Coalesce edits made during a slow write into a following serialized write.
-    const operation = (async () => {
+    const operation = (async (): Promise<boolean> => {
       while (dirty.current && activePathRef.current) {
         try {
           setSaveState("saving");
@@ -655,25 +668,26 @@ export default function App() {
         } catch (caught) {
           setSaveState("error");
           setError(caught instanceof Error ? caught.message : String(caught));
-          break;
+          return false;
         }
       }
+      return !dirty.current;
     })();
 
     saveInFlightRef.current = operation;
     try {
-      await operation;
+      return await operation;
     } finally {
       if (saveInFlightRef.current === operation) saveInFlightRef.current = null;
     }
   }, [root]);
 
-  const flushPlanSave = useCallback(async () => {
+  const flushPlanSave = useCallback(async (): Promise<boolean> => {
     if (planSaveTimer.current !== null) {
       window.clearTimeout(planSaveTimer.current);
       planSaveTimer.current = null;
     }
-    if (!planDirty.current || !root || !planWeeklyPathRef.current) return;
+    if (!planDirty.current || !root || !planWeeklyPathRef.current) return true;
     try {
       setSaveState("saving");
       const version = planEditVersionRef.current;
@@ -684,18 +698,20 @@ export default function App() {
         planDirty.current = false;
         setSaveState("saved");
       }
+      return !planDirty.current;
     } catch (caught) {
       setSaveState("error");
       setError(caught instanceof Error ? caught.message : String(caught));
+      return false;
     }
   }, [root]);
 
-  const flushPlanTodaySave = useCallback(async () => {
+  const flushPlanTodaySave = useCallback(async (): Promise<boolean> => {
     if (planTodaySaveTimer.current !== null) {
       window.clearTimeout(planTodaySaveTimer.current);
       planTodaySaveTimer.current = null;
     }
-    if (!planTodayDirty.current || !root || !planTodayPathRef.current) return;
+    if (!planTodayDirty.current || !root || !planTodayPathRef.current) return true;
     try {
       setSaveState("saving");
       const version = planTodayEditVersionRef.current;
@@ -706,9 +722,11 @@ export default function App() {
         planTodayDirty.current = false;
         setSaveState("saved");
       }
+      return !planTodayDirty.current;
     } catch (caught) {
       setSaveState("error");
       setError(caught instanceof Error ? caught.message : String(caught));
+      return false;
     }
   }, [root]);
 
@@ -780,7 +798,9 @@ export default function App() {
           activeDiskModifiedRef.current = file.modified;
           dirty.current = false;
         }
-        setTemplatesOpen(file.path.startsWith("Templates/"));
+        const openingTemplate = file.path.startsWith("Templates/");
+        setSettingsOpen(openingTemplate);
+        if (openingTemplate) setSettingsSection("templates");
         setSaveState("saved");
         setSidebarOpen(false);
       } catch (caught) {
@@ -906,6 +926,7 @@ export default function App() {
       contentRef.current = tomorrow.content;
       activeDiskModifiedRef.current = tomorrow.modified;
       dirty.current = false;
+      setSettingsOpen(false);
       setPlanMode(true);
       setSaveState("saved");
     } catch (caught) {
@@ -949,7 +970,8 @@ export default function App() {
     contentRef.current = file.content;
     activeDiskModifiedRef.current = file.modified;
     dirty.current = false;
-    setTemplatesOpen(true);
+    setSettingsOpen(true);
+    setSettingsSection("templates");
     setPlanMode(false);
     setSaveState("saved");
   }, []);
@@ -970,6 +992,28 @@ export default function App() {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   }, [flushPlanSave, flushPlanTodaySave, flushSave, root, showTemplateFile, templateSettings.daily]);
+
+  const openSettings = useCallback(async () => {
+    if (settingsSection === "templates") {
+      await openTemplates();
+      return;
+    }
+    await flushSave();
+    await flushPlanSave();
+    await flushPlanTodaySave();
+    setPlanMode(false);
+    setSettingsOpen(true);
+    setSidebarOpen(false);
+  }, [flushPlanSave, flushPlanTodaySave, flushSave, openTemplates, settingsSection]);
+
+  const openSettingsSection = useCallback((section: SettingsSection) => {
+    setSettingsSection(section);
+    if (section === "templates") void openTemplates();
+    else {
+      setPlanMode(false);
+      setSettingsOpen(true);
+    }
+  }, [openTemplates]);
 
   const createTemplate = useCallback(async (kind: TemplateKind, name: string, source?: NotebookFile) => {
     if (!root) return;
@@ -1164,6 +1208,7 @@ export default function App() {
         .slice(0, 5),
     [files],
   );
+  const documentNames = useMemo(() => documentLinkNames(files), [files]);
   const activeFile = files.find((file) => file.path === activePath);
   const toolbarTitle =
     activePath === dailyPath()
@@ -1208,13 +1253,17 @@ export default function App() {
   }, [flushPlanSave, flushPlanTodaySave, flushSave]);
 
   const closeWindow = useCallback(async () => {
-    if (!notebookStorage.native) return;
-    if (IS_MACOS) {
-      await getCurrentWindow().close();
-      return;
+    if (!notebookStorage.native || closingWindowRef.current) return;
+    closingWindowRef.current = true;
+    try {
+      await flushAll();
+      if (IS_MACOS) await getCurrentWindow().hide();
+      else await getCurrentWindow().close();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      closingWindowRef.current = false;
     }
-    await flushAll();
-    await getCurrentWindow().close();
   }, [flushAll]);
 
   const quitApplication = useCallback(async () => {
@@ -1384,17 +1433,13 @@ export default function App() {
   }, [executeAppCommand]);
 
   useEffect(() => {
-    if (!notebookStorage.native || !IS_MACOS) return;
+    if (!notebookStorage.native) return;
     let disposed = false;
     let removeCloseListener: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested((event) => {
-      event.preventDefault();
       if (closingWindowRef.current) return;
-      closingWindowRef.current = true;
-      void flushAll()
-        .then(() => getCurrentWindow().hide())
-        .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))
-        .finally(() => { closingWindowRef.current = false; });
+      event.preventDefault();
+      void closeWindow();
     }).then((remove) => {
       if (disposed) remove();
       else removeCloseListener = remove;
@@ -1403,7 +1448,7 @@ export default function App() {
       disposed = true;
       removeCloseListener?.();
     };
-  }, [flushAll]);
+  }, [closeWindow]);
 
   useEffect(() => {
     if (!notebookStorage.native || !IS_MACOS) return;
@@ -1551,16 +1596,12 @@ export default function App() {
           </div>
         </div>
 
-        <button className={`templates-switcher ${templatesOpen ? "active" : ""}`} onClick={() => void openTemplates()}>
-          <LayoutTemplate size={16} />
-          <span><small>Customize</small>Templates</span>
-        </button>
-        <button className={`templates-switcher ${feedbackOpen ? "active" : ""}`} onClick={() => setFeedbackOpen(true)}>
-          <MessageSquare size={16} />
-          <span><small>{shortcutLabel("share-feedback", APP_PLATFORM)}</small>Share feedback</span>
+        <button className={`settings-switcher ${settingsOpen ? "active" : ""}`} onClick={() => void openSettings()}>
+          <Settings2 size={16} />
+          <span><small>Templates · Shortcuts · Feedback</small>Settings</span>
         </button>
         <button className="folder-switcher" onClick={chooseFolder} title={root}>
-          <Settings2 size={16} />
+          <FolderOpen size={16} />
           <span><small>Notebook folder</small>{nameFromRoot(root)}</span>
         </button>
       </aside>
@@ -1574,9 +1615,11 @@ export default function App() {
               {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
             </button>
             <div className="page-location" data-tauri-drag-region>
-              <span className="page-title-small" data-tauri-drag-region>{toolbarTitle}</span>
+              <span className="page-title-small" data-tauri-drag-region>{settingsOpen ? "Settings" : toolbarTitle}</span>
               <span className="path-separator" data-tauri-drag-region>·</span>
-              <span className="page-path-small" data-tauri-drag-region title={activePath}>{activePath}</span>
+              <span className="page-path-small" data-tauri-drag-region title={settingsOpen ? undefined : activePath}>
+                {settingsOpen ? (settingsSection === "templates" ? "Templates" : "Keyboard shortcuts") : activePath}
+              </span>
             </div>
           </div>
           <div className="toolbar-status">
@@ -1626,37 +1669,57 @@ export default function App() {
           )}
         </header>
 
-        {error && (
-          <div className="error-banner">
-            <span>{error}</span>
-            <button className="icon-button" onClick={() => setError("")} aria-label="Dismiss error"><X size={16} /></button>
-          </div>
-        )}
-        {syncMessage && !error && (
-          <div className="sync-banner">
-            <span>{syncMessage}</span>
-            <button className="icon-button" onClick={() => setSyncMessage("")} aria-label="Dismiss sync status"><X size={16} /></button>
-          </div>
-        )}
+        <div className="toast-stack">
+          {error && (
+            <div className="toast toast-error" role="alert">
+              <AlertCircle className="toast-icon" size={16} />
+              <span>{error}</span>
+              <button className="icon-button" onClick={() => setError("")} aria-label="Dismiss error"><X size={16} /></button>
+            </div>
+          )}
+          {syncMessage && !error && (
+            <div
+              className="toast toast-success"
+              role="status"
+              onMouseEnter={() => setSyncToastHovered(true)}
+              onMouseLeave={() => setSyncToastHovered(false)}
+            >
+              <CheckCircle2 className="toast-icon" size={16} />
+              <span>{syncMessage}</span>
+              <button className="icon-button" onClick={() => setSyncMessage("")} aria-label="Dismiss sync status"><X size={16} /></button>
+            </div>
+          )}
+        </div>
 
         <div className={`page-wrap ${planMode ? "plan-layout" : ""}`}>
           {loading ? (
             <div className="page-loading"><span /><span /><span /><span /></div>
-          ) : templatesOpen ? (
-            <TemplateManager
-              files={files}
-              activePath={activePath}
-              content={content}
-              saveState={saveState}
-              settings={templateSettings}
-              zoom={zoom}
-              onChoose={(path) => void openPath(path)}
-              onChange={handleChange}
-              onCreate={(kind, name) => void createTemplate(kind, name)}
-              onDuplicate={(file, name) => void createTemplate(templateKindForPath(file.path), name, file)}
-              onRename={(file, name) => void renameTemplate(file, name)}
-              onDelete={(file) => void deleteTemplate(file)}
-              onSetActive={(kind, path) => void setActiveTemplate(kind, path)}
+          ) : settingsOpen ? (
+            <SettingsPage
+              section={settingsSection}
+              platform={APP_PLATFORM}
+              notebookName={nameFromRoot(root)}
+              notebookRoot={root}
+              onSectionChange={openSettingsSection}
+              onFeedback={() => setFeedbackOpen(true)}
+              onChooseFolder={() => void chooseFolder()}
+              templates={(
+                <TemplateManager
+                  files={files}
+                  activePath={activePath}
+                  content={content}
+                  saveState={saveState}
+                  settings={templateSettings}
+                  zoom={zoom}
+                  onChoose={(path) => void openPath(path)}
+                  onChange={handleChange}
+                  onCreate={(kind, name) => void createTemplate(kind, name)}
+                  onDuplicate={(file, name) => void createTemplate(templateKindForPath(file.path), name, file)}
+                  onRename={(file, name) => void renameTemplate(file, name)}
+                  onDelete={(file) => void deleteTemplate(file)}
+                  onSetActive={(kind, path) => void setActiveTemplate(kind, path)}
+                />
+              )}
             />
           ) : planMode ? (
             <>
@@ -1667,19 +1730,33 @@ export default function App() {
                     key={`plan-${planReference}-${planReference === "today" ? planTodayPath : planWeeklyPath}`}
                     value={planReference === "today" ? planTodayContent : planWeeklyContent}
                     onChange={planReference === "today" ? handleTodayPlanChange : handleWeeklyPlanChange}
-                    onOpenLink={openLink}
+                    onOpenLink={openLink} documents={documentNames}
+                    onRequestSave={planReference === "today" ? flushPlanTodaySave : flushPlanSave}
+                    onPluginError={setError}
                   />
                 </div>
               </section>
               <section className="plan-panel daily-plan-panel" aria-label="Daily plan">
                 <div className="plan-panel-label"><span>{toolbarTitle}</span><small>{activePath}</small></div>
                 <div className="plan-editor-wrap">
-                  <MarkdownEditor value={content} onChange={handleChange} onOpenLink={openLink} />
+                  <MarkdownEditor
+                    value={content}
+                    onChange={handleChange}
+                    onOpenLink={openLink} documents={documentNames}
+                    onRequestSave={flushSave}
+                    onPluginError={setError}
+                  />
                 </div>
               </section>
             </>
           ) : (
-            <MarkdownEditor value={content} onChange={handleChange} onOpenLink={openLink} />
+            <MarkdownEditor
+              value={content}
+              onChange={handleChange}
+              onOpenLink={openLink} documents={documentNames}
+              onRequestSave={flushSave}
+              onPluginError={setError}
+            />
           )}
         </div>
       </main>

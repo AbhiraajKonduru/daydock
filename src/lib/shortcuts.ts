@@ -25,149 +25,168 @@ export type AppCommand =
   | "quit-app"
   | "share-feedback";
 
+export type EditorShortcutCommand =
+  | "collapse-current-nested"
+  | "expand-current-nested"
+  | "collapse-all-nested"
+  | "expand-all-nested";
+
+export type ShortcutCommand = AppCommand | EditorShortcutCommand;
+
 export type KeyboardShortcutEvent = Pick<
   KeyboardEvent,
   "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey"
 >;
 
-type Modifiers = {
+type ShortcutBinding = {
+  key?: string;
+  code?: string;
+  mod?: boolean;
   alt?: boolean;
-  ctrl?: boolean;
-  meta?: boolean;
   shift?: boolean;
 };
 
-function hasModifiers(event: KeyboardShortcutEvent, modifiers: Modifiers): boolean {
-  return event.altKey === Boolean(modifiers.alt)
-    && event.ctrlKey === Boolean(modifiers.ctrl)
-    && event.metaKey === Boolean(modifiers.meta)
-    && event.shiftKey === Boolean(modifiers.shift);
-}
+/** `null` means the command has no keyboard binding on that platform. */
+type PlatformBinding = ShortcutBinding | ShortcutBinding[] | null;
 
-function keyIs(event: KeyboardShortcutEvent, key: string): boolean {
-  return event.key.toLowerCase() === key;
-}
-
-function letterIs(event: KeyboardShortcutEvent, letter: string): boolean {
-  return event.code === `Key${letter.toUpperCase()}` || keyIs(event, letter);
-}
-
-function macCommand(event: KeyboardShortcutEvent): AppCommand | null {
-  if (hasModifiers(event, { meta: true })) {
-    if (letterIs(event, "r")) return "block-reload";
-    if (letterIs(event, "k")) return "search";
-    if (letterIs(event, "s")) return "save";
-    if (event.code === "Digit1" || event.code === "Numpad1") return "open-today";
-    if (event.code === "Digit2" || event.code === "Numpad2") return "open-yesterday";
-    if (event.code === "Digit3" || event.code === "Numpad3") return "open-tomorrow";
-    if (event.code === "Digit4" || event.code === "Numpad4") return "open-last-week";
-    if (event.code === "Digit5" || event.code === "Numpad5") return "open-this-week";
-    if (event.code === "Digit6" || event.code === "Numpad6") return "open-next-week";
-    if (event.code === "Minus" || event.code === "NumpadSubtract") return "zoom-out";
-    if (event.code === "Digit0" || event.code === "Numpad0") return "zoom-reset";
-  }
-  if (hasModifiers(event, { meta: true, shift: true })) {
-    if (letterIs(event, "s")) return "sync";
-    if (letterIs(event, "p")) return "toggle-plan";
-    if (letterIs(event, "d")) return "toggle-plan-reference";
-    if (letterIs(event, "e")) return "apply-template";
-    if (letterIs(event, "f")) return "share-feedback";
-    if (event.code === "Equal" || event.code === "NumpadAdd" || event.key === "+") return "zoom-in";
-  }
-  if (hasModifiers(event, { alt: true, meta: true })) {
-    if (letterIs(event, "s")) return "toggle-sidebar";
-    if (letterIs(event, "r")) return "reset-page-tasks";
-    if (letterIs(event, "f")) return "complete-page-tasks";
-  }
-  return null;
-}
-
-function windowsOrLinuxCommand(event: KeyboardShortcutEvent): AppCommand | null {
-  const primary = event.ctrlKey || event.metaKey;
-  if (primary && !event.altKey && !event.shiftKey) {
-    if (keyIs(event, "r")) return "block-reload";
-    if (keyIs(event, "k")) return "search";
-    if (keyIs(event, "s")) return "save";
-    if (event.code === "Period") return "toggle-sidebar";
-    if (event.code === "Digit0" || event.code === "Numpad0") return "zoom-reset";
-  }
-  if (primary && !event.altKey && event.shiftKey) {
-    if (keyIs(event, "s")) return "sync";
-    if (keyIs(event, "f")) return "share-feedback";
-    if (event.code === "Equal" || event.code === "NumpadAdd" || event.key === "+") return "zoom-in";
-    if (event.code === "Minus" || event.code === "NumpadSubtract" || event.key === "_") return "zoom-out";
-  }
-  if (!primary && event.altKey && !event.shiftKey) {
-    if (keyIs(event, "t")) return "open-today";
-    if (keyIs(event, "y")) return "open-yesterday";
-    if (keyIs(event, "o")) return "open-tomorrow";
-    if (keyIs(event, "l")) return "open-last-week";
-    if (keyIs(event, "w")) return "open-this-week";
-    if (keyIs(event, "n")) return "open-next-week";
-    if (keyIs(event, "p")) return "toggle-plan";
-    if (keyIs(event, "d")) return "toggle-plan-reference";
-    if (keyIs(event, "e")) return "apply-template";
-  }
-  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
-    if (keyIs(event, "r")) return "reset-page-tasks";
-    if (keyIs(event, "f")) return "complete-page-tasks";
-  }
-  return null;
-}
-
-export function commandForKeyboardEvent(
-  event: KeyboardShortcutEvent,
-  platform: DesktopPlatform,
-): AppCommand | null {
-  return platform === "macos" ? macCommand(event) : windowsOrLinuxCommand(event);
-}
-
-const WINDOWS_LABELS: Partial<Record<AppCommand, string>> = {
-  "open-today": "Alt T",
-  "open-yesterday": "Alt Y",
-  "open-tomorrow": "Alt O",
-  "open-last-week": "Alt L",
-  "open-this-week": "Alt W",
-  "open-next-week": "Alt N",
-  search: "Ctrl K",
-  save: "Ctrl S",
-  sync: "Ctrl Shift S",
-  "toggle-sidebar": "Ctrl .",
-  "zoom-in": "Ctrl Shift +",
-  "zoom-out": "Ctrl Shift -",
-  "zoom-reset": "Ctrl 0",
-  "toggle-plan": "Alt P",
-  "toggle-plan-reference": "Alt D",
-  "apply-template": "Alt E",
-  "toggle-current-task": "Ctrl Enter",
-  "reset-page-tasks": "Ctrl Alt R",
-  "complete-page-tasks": "Ctrl Alt F",
-  "share-feedback": "Ctrl Shift F",
+type ShortcutDefinition = {
+  command: ShortcutCommand;
+  title: string;
+  section: "Navigation" | "Editing" | "View" | "Notebook";
+  scope?: "app" | "editor";
+  hidden?: boolean;
+  mac: PlatformBinding;
+  windows: PlatformBinding;
 };
 
-const MAC_LABELS: Partial<Record<AppCommand, string>> = {
-  "open-today": "⌘1",
-  "open-yesterday": "⌘2",
-  "open-tomorrow": "⌘3",
-  "open-last-week": "⌘4",
-  "open-this-week": "⌘5",
-  "open-next-week": "⌘6",
-  search: "⌘K",
-  save: "⌘S",
-  sync: "⇧⌘S",
-  "toggle-sidebar": "⌥⌘S",
-  "zoom-in": "⌘+",
-  "zoom-out": "⌘−",
-  "zoom-reset": "⌘0",
-  "toggle-plan": "⇧⌘P",
-  "toggle-plan-reference": "⇧⌘D",
-  "apply-template": "⇧⌘E",
-  "toggle-current-task": "⌘↩",
-  "reset-page-tasks": "⌥⌘R",
-  "complete-page-tasks": "⌥⌘F",
-  "share-feedback": "⇧⌘F",
-};
+const definition = (
+  command: ShortcutCommand,
+  title: string,
+  section: ShortcutDefinition["section"],
+  binding: ShortcutBinding,
+  options: Partial<Pick<ShortcutDefinition, "scope" | "hidden">> = {},
+): ShortcutDefinition => ({ command, title, section, mac: binding, windows: binding, ...options });
 
-export function shortcutLabel(command: AppCommand, platform: DesktopPlatform): string {
-  return (platform === "macos" ? MAC_LABELS : WINDOWS_LABELS)[command] ?? "";
+/** The single source of truth for keyboard handling, labels, and Settings. */
+export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
+  { command: "open-today", title: "Open today", section: "Navigation", mac: { mod: true, code: "Digit1" }, windows: { alt: true, code: "KeyT" } },
+  { command: "open-yesterday", title: "Open yesterday", section: "Navigation", mac: { mod: true, code: "Digit2" }, windows: { alt: true, code: "KeyY" } },
+  { command: "open-tomorrow", title: "Open tomorrow", section: "Navigation", mac: { mod: true, code: "Digit3" }, windows: { alt: true, code: "KeyO" } },
+  { command: "open-last-week", title: "Open last week", section: "Navigation", mac: { mod: true, code: "Digit4" }, windows: { alt: true, code: "KeyL" } },
+  { command: "open-this-week", title: "Open this week", section: "Navigation", mac: { mod: true, code: "Digit5" }, windows: { alt: true, code: "KeyW" } },
+  { command: "open-next-week", title: "Open next week", section: "Navigation", mac: { mod: true, code: "Digit6" }, windows: { alt: true, code: "KeyN" } },
+  definition("search", "Search notebook", "Navigation", { mod: true, code: "KeyK" }),
+
+  definition("toggle-current-task", "Toggle current task", "Editing", { mod: true, code: "Enter" }, { scope: "editor" }),
+  definition("collapse-current-nested", "Collapse current nested list", "Editing", { mod: true, shift: true, key: "[" }, { scope: "editor" }),
+  definition("expand-current-nested", "Expand current nested list", "Editing", { mod: true, shift: true, key: "]" }, { scope: "editor" }),
+  definition("collapse-all-nested", "Collapse all nested lists", "Editing", { mod: true, alt: true, key: "[" }, { scope: "editor" }),
+  definition("expand-all-nested", "Expand all nested lists", "Editing", { mod: true, alt: true, key: "]" }, { scope: "editor" }),
+  definition("reset-page-tasks", "Mark all tasks incomplete", "Editing", { mod: true, alt: true, code: "KeyR" }),
+  definition("complete-page-tasks", "Mark all tasks complete", "Editing", { mod: true, alt: true, code: "KeyF" }),
+
+  { command: "toggle-sidebar", title: "Toggle sidebar", section: "View", mac: { mod: true, alt: true, code: "KeyS" }, windows: { mod: true, code: "Period" } },
+  { command: "toggle-plan", title: "Toggle planning view", section: "View", mac: { mod: true, shift: true, code: "KeyP" }, windows: { alt: true, code: "KeyP" } },
+  { command: "toggle-plan-reference", title: "Switch plan reference", section: "View", mac: { mod: true, shift: true, code: "KeyD" }, windows: { alt: true, code: "KeyD" } },
+  { command: "apply-template", title: "Apply template", section: "View", mac: { mod: true, shift: true, code: "KeyE" }, windows: { alt: true, code: "KeyE" } },
+  { command: "zoom-in", title: "Zoom in", section: "View", mac: [{ mod: true, code: "Equal" }, { mod: true, shift: true, code: "Equal" }], windows: { mod: true, shift: true, code: "Equal" } },
+  { command: "zoom-out", title: "Zoom out", section: "View", mac: { mod: true, code: "Minus" }, windows: { mod: true, shift: true, code: "Minus" } },
+  definition("zoom-reset", "Actual size", "View", { mod: true, code: "Digit0" }),
+
+  definition("save", "Save", "Notebook", { mod: true, code: "KeyS" }),
+  definition("sync", "Sync notebook", "Notebook", { mod: true, shift: true, code: "KeyS" }),
+  definition("share-feedback", "Share feedback", "Notebook", { mod: true, shift: true, code: "KeyF" }),
+  // Served by the macOS application menu, so they carry no in-page binding elsewhere.
+  { command: "close-window", title: "Close window", section: "Notebook", mac: { mod: true, code: "KeyW" }, windows: null },
+  { command: "quit-app", title: "Quit Daydock", section: "Notebook", mac: { mod: true, code: "KeyQ" }, windows: null },
+  definition("block-reload", "Reload", "Notebook", { mod: true, code: "KeyR" }, { hidden: true }),
+];
+
+function bindingsFor(definition: ShortcutDefinition, platform: DesktopPlatform): ShortcutBinding[] {
+  const configured = platform === "macos" ? definition.mac : definition.windows;
+  if (!configured) return [];
+  return Array.isArray(configured) ? configured : [configured];
+}
+
+function bindingFor(definition: ShortcutDefinition, platform: DesktopPlatform): ShortcutBinding | undefined {
+  return bindingsFor(definition, platform)[0];
+}
+
+function matches(event: KeyboardShortcutEvent, binding: ShortcutBinding, platform: DesktopPlatform): boolean {
+  const mod = platform === "macos" ? event.metaKey : event.ctrlKey || event.metaKey;
+  if (mod !== Boolean(binding.mod)) return false;
+  if (event.altKey !== Boolean(binding.alt) || event.shiftKey !== Boolean(binding.shift)) return false;
+  if (platform === "macos" && event.ctrlKey) return false;
+  if (binding.code && event.code !== binding.code) return false;
+  if (binding.key && event.key !== binding.key) return false;
+  return true;
+}
+
+export function commandForKeyboardEvent(event: KeyboardShortcutEvent, platform: DesktopPlatform): AppCommand | null {
+  const match = SHORTCUT_DEFINITIONS.find((candidate) =>
+    candidate.scope !== "editor"
+      && bindingsFor(candidate, platform).some((binding) => matches(event, binding, platform)),
+  );
+  return match?.command as AppCommand | undefined ?? null;
+}
+
+function keyName(binding: ShortcutBinding): string {
+  if (binding.key === "[") return "[";
+  if (binding.key === "]") return "]";
+  if (binding.code?.startsWith("Key")) return binding.code.slice(3);
+  if (binding.code?.startsWith("Digit")) return binding.code.slice(5);
+  if (binding.code === "Period") return ".";
+  if (binding.code === "Equal") return "+";
+  if (binding.code === "Minus") return "−";
+  if (binding.code === "Enter") return "Enter";
+  return binding.key ?? binding.code ?? "";
+}
+
+function labelForBinding(binding: ShortcutBinding, platform: DesktopPlatform): string {
+  const key = keyName(binding);
+  if (platform === "macos") {
+    return `${binding.shift ? "⇧" : ""}${binding.alt ? "⌥" : ""}${binding.mod ? "⌘" : ""}${key === "Enter" ? "↩" : key}`;
+  }
+  return [binding.mod ? "Ctrl" : "", binding.alt ? "Alt" : "", binding.shift ? "Shift" : "", key]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function shortcutLabel(command: ShortcutCommand, platform: DesktopPlatform): string {
+  const item = SHORTCUT_DEFINITIONS.find((candidate) => candidate.command === command);
+  const binding = item && bindingFor(item, platform);
+  return binding ? labelForBinding(binding, platform) : "";
+}
+
+/** Every shortcut the app actually binds on this platform, for the Settings list. */
+export function shortcutsForPlatform(platform: DesktopPlatform) {
+  return SHORTCUT_DEFINITIONS
+    .filter((item) => !item.hidden && bindingFor(item, platform))
+    .map((item) => ({
+      command: item.command,
+      title: item.title,
+      section: item.section,
+      label: shortcutLabel(item.command, platform),
+    }));
+}
+
+export function shortcutAccelerator(command: ShortcutCommand): string | undefined {
+  const item = SHORTCUT_DEFINITIONS.find((candidate) => candidate.command === command);
+  const binding = item && bindingFor(item, "macos");
+  if (!binding) return undefined;
+  const modifiers = [binding.mod ? "CmdOrCtrl" : "", binding.alt ? "Alt" : "", binding.shift ? "Shift" : ""].filter(Boolean);
+  const key = keyName(binding).replace("−", "Minus");
+  return [...modifiers, key].join("+");
+}
+
+export function codeMirrorShortcut(command: ShortcutCommand): string {
+  const item = SHORTCUT_DEFINITIONS.find((candidate) => candidate.command === command);
+  const binding = item && bindingFor(item, "macos");
+  if (!binding) return "";
+  return [
+    binding.mod ? "Mod" : "",
+    binding.alt ? "Alt" : "",
+    binding.shift ? "Shift" : "",
+    keyName(binding),
+  ].filter(Boolean).join("-");
 }

@@ -1,10 +1,10 @@
 import { Check, Copy, FilePlus2, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { NotebookFile, SaveState, TemplateKind, TemplateSettings } from "../types";
-import { documentDisplayName, documentFileStem, documentNameIssue } from "../lib/documents";
+import { documentDisplayName, documentFileStem, documentLinkNames, documentNameIssue } from "../lib/documents";
 import { MarkdownEditor } from "./MarkdownEditor";
 
-type TemplateManagerProps = {
+export type TemplateManagerProps = {
   files: NotebookFile[];
   activePath: string;
   content: string;
@@ -184,7 +184,7 @@ export function TemplateManager(props: TemplateManagerProps) {
         <header className="template-editor-toolbar">
           <div>
             <strong>{selected ? documentDisplayName(selected.name) : "Template"}</strong>
-            <small>{kind === "daily" ? "Use {{DATE}} for the page date" : "Use {{WEEK}} and {{YEAR}} for the week heading"}</small>
+            <small>{kind === "daily" ? "Use {{DATE}} for the page date" : "Use {{WEEK}} and {{YEAR}} for the week heading"} · Slash commands run when a page is created</small>
           </div>
           <span className={`save-state save-${props.saveState}`}>
             {props.saveState === "saved" ? "Saved" : props.saveState === "saving" ? "Saving…" : "Save failed"}
@@ -201,7 +201,7 @@ export function TemplateManager(props: TemplateManagerProps) {
           )}
         </header>
         <div className="template-editor-scroll">
-          <MarkdownEditor value={props.content} onChange={props.onChange} onOpenLink={() => {}} />
+          <MarkdownEditor value={props.content} onChange={props.onChange} onOpenLink={() => {}} pluginMode="template" documents={documentLinkNames(props.files)} />
         </div>
       </section>
 

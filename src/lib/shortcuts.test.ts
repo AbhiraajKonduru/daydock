@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { commandForKeyboardEvent, shortcutLabel, type KeyboardShortcutEvent } from "./shortcuts";
+import {
+  commandForKeyboardEvent,
+  shortcutLabel,
+  shortcutsForPlatform,
+  type KeyboardShortcutEvent,
+} from "./shortcuts";
 
 function key(
   value: string,
@@ -55,5 +60,35 @@ describe("Windows and Linux shortcuts", () => {
 
   it("preserves task bulk actions", () => {
     expect(commandForKeyboardEvent(key("f", { altKey: true, ctrlKey: true }), "windows")).toBe("complete-page-tasks");
+  });
+});
+
+describe("The Settings shortcut list", () => {
+  const commands = (platform: "macos" | "windows") =>
+    shortcutsForPlatform(platform).map((shortcut) => shortcut.command);
+
+  it("only lists shortcuts that are really bound on the platform shown", () => {
+    for (const platform of ["macos", "windows"] as const) {
+      expect(shortcutsForPlatform(platform).every((shortcut) => shortcut.label)).toBe(true);
+      expect(commands(platform)).not.toContain("block-reload");
+    }
+    // Closing and quitting are macOS application-menu commands.
+    expect(commands("macos")).toContain("close-window");
+    expect(commands("windows")).not.toContain("close-window");
+  });
+
+  it("labels the nested-list shortcuts for the platform in use", () => {
+    const label = (platform: "macos" | "windows", command: string) =>
+      shortcutsForPlatform(platform).find((shortcut) => shortcut.command === command)?.label;
+    expect(label("macos", "collapse-current-nested")).toBe("⇧⌘[");
+    expect(label("macos", "expand-all-nested")).toBe("⌥⌘]");
+    expect(label("windows", "collapse-all-nested")).toBe("Ctrl Alt [");
+  });
+
+  it("never claims an editor shortcut as an application command", () => {
+    expect(commandForKeyboardEvent(
+      { key: "[", code: "BracketLeft", altKey: true, ctrlKey: true, metaKey: false, shiftKey: false },
+      "windows",
+    )).toBeNull();
   });
 });

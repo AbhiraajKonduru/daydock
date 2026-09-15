@@ -67,6 +67,13 @@ describe("templates and dates", () => {
       .toContain("# Week 3, 2027");
   });
 
+  it("runs complete template commands while retaining incomplete daily prompts", () => {
+    expect(renderTemplateForPath("# {{DATE}}\n\n/capacity 4h\n", "Daily/2026-09-05.md"))
+      .toContain("⏳ Focus capacity · 4h <!--daydock:capacity-->");
+    expect(renderTemplateForPath("# {{DATE}}\n\n/capacity\n", "Daily/2026-09-05.md"))
+      .toContain("\n/capacity\n");
+  });
+
   it("uses the requested System streak label", () => {
     expect(dailyTemplate("2026-08-03", 12)).toContain("🔥 System streak: 12");
   });

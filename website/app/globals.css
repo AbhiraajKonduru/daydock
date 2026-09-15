@@ -728,6 +728,8 @@ button.primary { border: 0; cursor: pointer; }
 .submissionList header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 .submissionList h3 { margin: 0 0 6px; font-size: 16px; }
 .submissionList p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.55; }
+.submissionList .responseField { margin-top: 8px; white-space: pre-wrap; }
+.submissionList .responseField small { display: block; margin-bottom: 2px; color: var(--muted); font: 10px var(--mono); }
 .submissionList .meta { margin-top: 8px; color: var(--muted); font: 11px var(--mono); }
 .pill { padding: 3px 9px; border-radius: 999px; background: var(--bg-3); border: 1px solid var(--line); font: 600 10px var(--sans); color: var(--ink-2); }
 .pill.verified { background: rgba(111, 185, 143, 0.14); border-color: rgba(111, 185, 143, 0.4); color: var(--gain); }

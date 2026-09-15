@@ -39,6 +39,10 @@ export type DashboardRange = {
 
 const DAY = 24 * 60 * 60 * 1000;
 
+export function isFeedbackKind(kind: SubmissionRecord["kind"]): boolean {
+  return kind === "bug" || kind === "feature" || kind === "improvement" || kind === "general";
+}
+
 function inRange(value: number, range: DashboardRange): boolean {
   if (range.since != null && value < range.since) return false;
   if (range.until != null && value > range.until) return false;
@@ -111,6 +115,9 @@ export function summarizeDashboard(
     referrers: countBy(views.map((event) => event.referrer || "direct")),
     months: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, count]) => ({ month, count })),
     submissions: filteredSubmissions.length,
+    feedback: filteredSubmissions.filter((item) => isFeedbackKind(item.kind)).length,
+    advisors: filteredSubmissions.filter((item) => item.kind === "advisor").length,
+    volunteers: filteredSubmissions.filter((item) => item.kind === "volunteer").length,
     testimonials: testimonials.length,
     publishedTestimonials: testimonials.filter((item) => item.status === "published").length,
     verifiedSubmissions: filteredSubmissions.filter((item) => item.verified).length,
@@ -128,8 +135,9 @@ export function grantLines(stats: ReturnType<typeof summarizeDashboard>): string
     stats.growth == null ? "Growth needs a previous period with downloads for comparison" : `${stats.growth > 0 ? "+" : ""}${stats.growth}% vs the previous period`,
     `Approximate unique downloaders: ${stats.uniqueDownloaders}`,
     platforms > 0 ? `Download clicks from ${platforms} operating system${platforms === 1 ? "" : "s"}` : "No platform breakdown yet",
-    `${stats.submissions} feedback submission${stats.submissions === 1 ? "" : "s"}`,
+    `${stats.feedback} feedback submission${stats.feedback === 1 ? "" : "s"}`,
     `${stats.testimonials} impact stor${stats.testimonials === 1 ? "y" : "ies"}`,
+    `${stats.advisors} advisory board application${stats.advisors === 1 ? "" : "s"} · ${stats.volunteers} volunteer sign-up${stats.volunteers === 1 ? "" : "s"}`,
     stats.conversionRate == null ? "Conversion rate needs website visits in this period" : `${stats.conversionRate}% of tracked visitors clicked a download`,
   ];
 }
@@ -151,8 +159,10 @@ export function statsCsv(stats: ReturnType<typeof summarizeDashboard>): string {
     ["Approximate unique visitors", stats.uniqueVisitors],
     ["Visit to download conversion %", stats.conversionRate ?? ""],
     ["Growth % vs previous period", stats.growth ?? ""],
-    ["Feedback submissions", stats.submissions],
+    ["Feedback submissions", stats.feedback],
     ["Impact stories", stats.testimonials],
+    ["Advisory board applications", stats.advisors],
+    ["Volunteer sign-ups", stats.volunteers],
     ["Published testimonials", stats.publishedTestimonials],
     ["Submitted with a valid Daydock code", stats.verifiedSubmissions],
   ];
@@ -165,8 +175,9 @@ export function statsCsv(stats: ReturnType<typeof summarizeDashboard>): string {
 
 export function submissionsCsv(records: SubmissionRecord[]): string {
   const header = [
-    "createdAt", "kind", "status", "verified", "quotePermission", "displayName", "role",
-    "platform", "appVersion", "title", "message", "useCase", "problem", "outcome", "recommendation", "email",
+    "createdAt", "kind", "status", "verified", "quotePermission", "followUpPermission", "displayPreference",
+    "displayName", "role", "platform", "appVersion", "title", "message", "useCase", "problem", "outcome",
+    "recommendation", "email", "contact", "linkedinUrl",
   ];
   const rows = records.map((record) => [
     new Date(record.createdAt).toISOString(),
@@ -174,6 +185,8 @@ export function submissionsCsv(records: SubmissionRecord[]): string {
     record.status,
     record.verified,
     record.quotePermission,
+    record.followUpPermission,
+    record.displayPreference,
     record.displayName,
     record.role,
     record.platform,
@@ -185,6 +198,8 @@ export function submissionsCsv(records: SubmissionRecord[]): string {
     record.outcome,
     record.recommendation,
     record.email,
+    record.contact,
+    record.linkedinUrl,
   ]);
   return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
 }

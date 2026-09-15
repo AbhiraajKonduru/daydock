@@ -29,6 +29,14 @@ export function documentTitle(file: NotebookFile): string {
   return documentDisplayName(file.name) || file.name;
 }
 
+/** Names of every document as they are written inside a `[[...]]` link. */
+export function documentLinkNames(files: readonly NotebookFile[]): string[] {
+  return files
+    .filter((file) => file.path.startsWith("Docs/"))
+    .map((file) => documentDisplayName(documentFileStem(file.name)))
+    .filter(Boolean);
+}
+
 export function documentPath(name: string): string {
   return `Docs/${documentFileStem(name)}.md`;
 }

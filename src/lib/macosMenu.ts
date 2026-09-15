@@ -1,5 +1,5 @@
 import { Menu, type MenuItemOptions, type PredefinedMenuItemOptions } from "@tauri-apps/api/menu";
-import type { AppCommand } from "./shortcuts";
+import { shortcutAccelerator, type AppCommand } from "./shortcuts";
 
 type CommandHandler = (command: AppCommand) => void;
 
@@ -29,17 +29,17 @@ async function createMacosMenu(): Promise<void> {
           predefined("HideOthers"),
           predefined("ShowAll"),
           separator(),
-          commandItem("quit-app", "Quit Daydock", "CmdOrCtrl+Q"),
+          commandItem("quit-app", "Quit Daydock", shortcutAccelerator("quit-app")),
         ],
       },
       {
         id: "file-menu",
         text: "File",
         items: [
-          commandItem("save", "Save", "CmdOrCtrl+S"),
-          commandItem("sync", "Sync Notebook", "CmdOrCtrl+Shift+S"),
+          commandItem("save", "Save", shortcutAccelerator("save")),
+          commandItem("sync", "Sync Notebook", shortcutAccelerator("sync")),
           separator(),
-          commandItem("close-window", "Close Window", "CmdOrCtrl+W"),
+          commandItem("close-window", "Close Window", shortcutAccelerator("close-window")),
         ],
       },
       {
@@ -54,23 +54,23 @@ async function createMacosMenu(): Promise<void> {
           predefined("Paste"),
           predefined("SelectAll"),
           separator(),
-          commandItem("toggle-current-task", "Toggle Current Task", "CmdOrCtrl+Enter"),
-          commandItem("reset-page-tasks", "Mark All Tasks Incomplete", "CmdOrCtrl+Alt+R"),
-          commandItem("complete-page-tasks", "Mark All Tasks Complete", "CmdOrCtrl+Alt+F"),
+          commandItem("toggle-current-task", "Toggle Current Task", shortcutAccelerator("toggle-current-task")),
+          commandItem("reset-page-tasks", "Mark All Tasks Incomplete", shortcutAccelerator("reset-page-tasks")),
+          commandItem("complete-page-tasks", "Mark All Tasks Complete", shortcutAccelerator("complete-page-tasks")),
         ],
       },
       {
         id: "view-menu",
         text: "View",
         items: [
-          commandItem("toggle-sidebar", "Toggle Sidebar", "CmdOrCtrl+Alt+S"),
-          commandItem("toggle-plan", "Toggle Plan", "CmdOrCtrl+Shift+P"),
-          commandItem("toggle-plan-reference", "Switch Plan Reference", "CmdOrCtrl+Shift+D"),
-          commandItem("apply-template", "Apply Template", "CmdOrCtrl+Shift+E"),
+          commandItem("toggle-sidebar", "Toggle Sidebar", shortcutAccelerator("toggle-sidebar")),
+          commandItem("toggle-plan", "Toggle Plan", shortcutAccelerator("toggle-plan")),
+          commandItem("toggle-plan-reference", "Switch Plan Reference", shortcutAccelerator("toggle-plan-reference")),
+          commandItem("apply-template", "Apply Template", shortcutAccelerator("apply-template")),
           separator(),
-          commandItem("zoom-in", "Zoom In", "CmdOrCtrl++"),
-          commandItem("zoom-out", "Zoom Out", "CmdOrCtrl+Minus"),
-          commandItem("zoom-reset", "Actual Size", "CmdOrCtrl+0"),
+          commandItem("zoom-in", "Zoom In", shortcutAccelerator("zoom-in")),
+          commandItem("zoom-out", "Zoom Out", shortcutAccelerator("zoom-out")),
+          commandItem("zoom-reset", "Actual Size", shortcutAccelerator("zoom-reset")),
           separator(),
           predefined("Fullscreen", "Enter Full Screen"),
         ],
@@ -79,12 +79,12 @@ async function createMacosMenu(): Promise<void> {
         id: "go-menu",
         text: "Go",
         items: [
-          commandItem("open-today", "Today", "CmdOrCtrl+1"),
-          commandItem("open-yesterday", "Yesterday", "CmdOrCtrl+2"),
-          commandItem("open-tomorrow", "Tomorrow", "CmdOrCtrl+3"),
-          commandItem("open-last-week", "Last Week", "CmdOrCtrl+4"),
-          commandItem("open-this-week", "This Week", "CmdOrCtrl+5"),
-          commandItem("open-next-week", "Next Week", "CmdOrCtrl+6"),
+          commandItem("open-today", "Today", shortcutAccelerator("open-today")),
+          commandItem("open-yesterday", "Yesterday", shortcutAccelerator("open-yesterday")),
+          commandItem("open-tomorrow", "Tomorrow", shortcutAccelerator("open-tomorrow")),
+          commandItem("open-last-week", "Last Week", shortcutAccelerator("open-last-week")),
+          commandItem("open-this-week", "This Week", shortcutAccelerator("open-this-week")),
+          commandItem("open-next-week", "Next Week", shortcutAccelerator("open-next-week")),
         ],
       },
       {
@@ -98,7 +98,7 @@ async function createMacosMenu(): Promise<void> {
         ],
       },
       { id: "help-menu", text: "Help", items: [
-        commandItem("share-feedback", "Share Feedback…", "CmdOrCtrl+Shift+F"),
+        commandItem("share-feedback", "Share Feedback…", shortcutAccelerator("share-feedback")),
       ] },
     ],
   });

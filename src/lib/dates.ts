@@ -1,4 +1,6 @@
 import type { NotebookFile } from "../types";
+import { daydockPlugins } from "../plugins/registry";
+import { materializeTemplateCommands } from "../plugins/templateCommands";
 import { documentTitle } from "./documents";
 
 const DAY_MS = 86_400_000;
@@ -75,13 +77,21 @@ export function weeklyTemplate(date = new Date()): string {
 
 export function renderTemplateForPath(template: string, path: string): string {
   const daily = path.match(/^Daily\/(\d{4}-\d{2}-\d{2})\.md$/);
-  if (daily) return template.replaceAll("{{DATE}}", longDate(daily[1]));
+  if (daily) {
+    return materializeTemplateCommands(
+      template.replaceAll("{{DATE}}", longDate(daily[1])),
+      daydockPlugins,
+    );
+  }
 
   const weekly = path.match(/^Weekly\/(\d{4})-W(\d{2})\.md$/);
   if (weekly) {
-    return template
-      .replaceAll("{{WEEK}}", String(Number(weekly[2])))
-      .replaceAll("{{YEAR}}", weekly[1]);
+    return materializeTemplateCommands(
+      template
+        .replaceAll("{{WEEK}}", String(Number(weekly[2])))
+        .replaceAll("{{YEAR}}", weekly[1]),
+      daydockPlugins,
+    );
   }
   return template;
 }

@@ -18,6 +18,18 @@
   --selection: #594139;
   --green: #92aa98;
   --app-zoom: 1;
+  --list-step: 24px;
+  --list-guide: #333230;
+  --list-guide-offset: 11px;
+  --card: #201f1d;
+  --card-line: #3b3935;
+  --card-raised: #35332f;
+  --card-raised-hover: #45413b;
+  --card-track: #35332f;
+  --run-line: #6b4536;
+  --run-fill: #251f1c;
+  --done-line: #405347;
+  --done-fill: #1d241f;
 }
 
 * { box-sizing: border-box; }
@@ -108,14 +120,13 @@ kbd { border: 0; background: transparent; font: 9px "DM Mono", monospace; color:
 .section-heading button { display: grid; place-items: center; width: 27px; height: 25px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #7a7872; cursor: pointer; }
 .section-heading button:hover { color: var(--ink); background: #282826; }
 
-.templates-switcher, .folder-switcher { min-width: 0; border: 0; background: transparent; display: flex; align-items: center; gap: 9px; padding: 9px 8px; cursor: pointer; text-align: left; color: #aaa8a1; }
-.templates-switcher { border-top: 1px solid var(--line-soft); }
-.templates-switcher + .templates-switcher { border-top: 0; padding-top: 4px; }
+.settings-switcher, .folder-switcher { min-width: 0; border: 0; background: transparent; display: flex; align-items: center; gap: 9px; padding: 9px 8px; cursor: pointer; text-align: left; color: #aaa8a1; }
+.settings-switcher { border-top: 1px solid var(--line-soft); }
 .folder-switcher { padding-top: 7px; padding-bottom: 2px; }
-.templates-switcher:hover, .templates-switcher.active, .folder-switcher:hover { color: var(--ink); }
-.templates-switcher.active { background: #30302e; border-radius: 7px; }
-.templates-switcher > span, .folder-switcher > span { display: grid; min-width: 0; font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.templates-switcher small, .folder-switcher small { color: #686761; font-size: 8px; font-weight: 500; }
+.settings-switcher:hover, .settings-switcher.active, .folder-switcher:hover { color: var(--ink); }
+.settings-switcher.active { background: #30302e; border-radius: 7px; }
+.settings-switcher > span, .folder-switcher > span { display: grid; min-width: 0; font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-switcher small, .folder-switcher small { color: #686761; font-size: 8px; font-weight: 500; }
 
 .notebook-main { min-width: 0; flex: 1; height: calc(100vh / var(--app-zoom)); background: var(--paper); display: flex; flex-direction: column; }
 .page-toolbar { height: 49px; flex: 0 0 49px; display: flex; align-items: center; padding: 0 0 0 10px; border-bottom: 1px solid var(--line-soft); background: rgba(27, 27, 26, 0.94); backdrop-filter: blur(16px); z-index: 10; }
@@ -189,6 +200,71 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 .apply-template-list button:hover { background: #32312f; }
 .apply-template-list button.selected { border-color: #765040; background: #362822; color: var(--ink); }
 .apply-template-list button small { color: #9cad9e; font-size: 8px; }
+
+.settings-page { height: 100%; display: grid; grid-template-columns: 212px minmax(0, 1fr); }
+.settings-navigation {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 17px 11px 13px;
+  border-right: 1px solid var(--line-soft);
+  background: #191918;
+}
+.settings-title { display: flex; align-items: center; gap: 8px; padding: 0 9px 13px; color: var(--muted); }
+.settings-title h1 { margin: 0; color: var(--ink); font-size: 12px; font-weight: 650; letter-spacing: -.01em; }
+.settings-navigation button {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #aaa8a1;
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+}
+.settings-navigation button svg { flex: 0 0 auto; }
+.settings-navigation button:hover { background: #232322; color: var(--ink); }
+.settings-navigation button.active { background: #30302e; color: var(--ink); }
+.settings-notebook { margin-top: auto; }
+.settings-notebook > span { display: grid; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-notebook small { color: #686761; font-size: 8px; font-weight: 500; }
+
+.settings-content { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+.settings-content > .template-manager { min-height: 0; height: 100%; }
+
+.shortcut-settings { min-height: 0; overflow-y: auto; padding: 44px 40px 90px; scrollbar-width: thin; scrollbar-color: #47453f transparent; }
+.settings-content-heading { max-width: 620px; margin: 0 auto 27px; }
+.settings-content-heading h1 { margin: 0 0 7px; font-family: "Merriweather", Georgia, serif; font-size: 27px; font-weight: 400; letter-spacing: -.02em; }
+.settings-content-heading p { margin: 0; color: var(--muted); font-size: 11px; }
+.shortcut-groups { max-width: 620px; margin: 0 auto; display: grid; gap: 25px; }
+.shortcut-group h2 { margin: 0 0 9px; color: var(--faint); font-size: 9px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.shortcut-list { display: grid; border: 1px solid var(--line-soft); border-radius: 9px; overflow: hidden; }
+.shortcut-row {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 13px;
+  color: #c9c6bf;
+  font-size: 11px;
+}
+.shortcut-row + .shortcut-row { border-top: 1px solid var(--line-soft); }
+.shortcut-row kbd {
+  padding: 3px 7px;
+  border: 1px solid #3d3b36;
+  border-radius: 5px;
+  background: #232220;
+  color: #cbc7bf;
+  font: 10px "DM Mono", monospace;
+  white-space: nowrap;
+}
 .plan-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--paper); }
 .weekly-plan-panel { border-right: 1px solid var(--line); background: #191918; }
 .plan-panel-label { height: 34px; flex: 0 0 34px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid var(--line-soft); color: #c5c2bb; font-size: 10px; font-weight: 700; }
@@ -197,11 +273,78 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 .plan-editor-wrap .markdown-editor { width: 100%; padding: 52px 36px 150px; }
 .plan-editor-wrap .cm-notebook-h1 { font-size: 34px; }
 
-.markdown-editor .cm-editor { background: transparent; color: #dfddd7; font-family: "DM Sans", sans-serif; font-size: 15px; line-height: 1.78; }
+.markdown-editor .cm-editor { position: relative; background: transparent; color: #dfddd7; font-family: "DM Sans", sans-serif; font-size: 15px; line-height: 1.78; }
 .markdown-editor .cm-editor.cm-focused { outline: none; }
 .markdown-editor .cm-scroller { overflow: visible; font-family: inherit; }
 .markdown-editor .cm-content { padding: 0; caret-color: var(--accent); }
-.markdown-editor .cm-line { padding: 0 4px; min-height: 1.78em; border-radius: 4px; }
+.markdown-editor .cm-line { padding: 0 4px; min-height: 1.78em; border-radius: 4px; line-height: 1.78; }
+.markdown-editor .cm-daydock-line-selected { background-color: rgba(220, 121, 89, .1); border-radius: 0; }
+.daydock-lines-settling .cm-daydock-line-selected { animation: daydock-line-settle 240ms ease-out; }
+@keyframes daydock-line-settle {
+  from { background-color: rgba(220, 121, 89, .22); }
+  to { background-color: rgba(220, 121, 89, .1); }
+}
+.markdown-editor .cm-daydock-line-selected-first { border-radius: 6px 6px 0 0; }
+.markdown-editor .cm-daydock-line-selected-last { border-radius: 0 0 6px 6px; }
+.markdown-editor .cm-daydock-line-selected-first.cm-daydock-line-selected-last { border-radius: 6px; }
+.daydock-line-handle {
+  position: absolute;
+  z-index: 65;
+  width: 18px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #6f6d67;
+  cursor: grab;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+  touch-action: none;
+}
+/* An invisible bridge over the gap to the text, so the pointer never falls
+   between a line and its handle. */
+.daydock-line-handle::before { content: ""; position: absolute; inset: -2px -10px -2px -4px; }
+.daydock-line-handle.visible { opacity: 1; pointer-events: auto; }
+.daydock-line-handle:hover,
+.daydock-line-handle:focus-visible { background: rgba(255, 255, 255, .07); color: #a9a69f; outline: none; }
+.daydock-line-handle.dragging { cursor: grabbing; background: rgba(255, 255, 255, .07); color: #c9c6bf; }
+.daydock-line-handle > span { width: 8px; height: 13px; display: grid; grid-template-columns: repeat(2, 3px); grid-auto-rows: 3px; gap: 2px; }
+.daydock-line-handle i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+.daydock-line-drop-indicator {
+  position: absolute;
+  z-index: 64;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(220, 121, 89, .75);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-1.5px);
+  transition: opacity 80ms ease, top 90ms ease-out;
+}
+.daydock-line-drop-indicator.visible { opacity: 1; }
+.daydock-line-drag-ghost {
+  position: absolute;
+  z-index: 90;
+  max-width: 280px;
+  padding: 5px 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 6px;
+  background: #2a2927;
+  color: #e3e1db;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  font: 13px/1.4 "DM Sans", system-ui, sans-serif;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  white-space: pre;
+}
+.daydock-line-drag-ghost.visible { opacity: .9; }
+.daydock-lines-dragging { cursor: grabbing; user-select: none; }
 .markdown-editor .cm-notebook-horizontal-rule { position: relative; }
 .markdown-editor .cm-notebook-horizontal-rule::after {
   content: "";
@@ -269,8 +412,325 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 .notebook-checkbox input:checked { background: #9caf9f; border-color: #9caf9f; }
 .notebook-checkbox input:checked::before { transform: rotate(-45deg) scale(1); }
 
-.error-banner { margin: 12px 18px 0; min-height: 39px; display: flex; align-items: center; justify-content: space-between; padding: 3px 6px 3px 12px; border: 1px solid #664138; border-radius: 8px; background: #2b201d; color: #e19b89; font-size: 11px; }
-.sync-banner { margin: 12px 18px 0; min-height: 39px; display: flex; align-items: center; justify-content: space-between; padding: 3px 6px 3px 12px; border: 1px solid #3d6047; border-radius: 8px; background: #1d2a20; color: #afd0b5; font-size: 11px; }
+/* Nested list hierarchy.
+   Every level is one --list-step of real indentation, drawn by a widget that
+   replaces the Markdown leading whitespace, so the guide lines below always land
+   under the parent marker no matter how the source is indented. The matching
+   padding and negative text-indent hang wrapped text under the item's text. */
+.notebook-list-indent { display: inline-block; height: 1px; vertical-align: baseline; }
+.markdown-editor .cm-notebook-list-item {
+  padding-left: calc(4px + var(--list-depth, 0) * var(--list-step) + var(--list-marker, 16px));
+  text-indent: calc(-1 * (var(--list-depth, 0) * var(--list-step) + var(--list-marker, 16px)));
+  background-image: repeating-linear-gradient(to right, var(--list-guide) 0 1px, transparent 1px var(--list-step));
+  background-repeat: no-repeat;
+  background-size: calc(var(--list-depth, 0) * var(--list-step)) 100%;
+  background-position: var(--list-guide-offset) 0;
+  border-radius: 0;
+}
+.markdown-editor .cm-notebook-list-depth-0 { border-radius: 4px; }
+
+.notebook-bullet { text-indent: 0; }
+.notebook-bullet.notebook-list-depth-1 { color: #918e87; }
+.notebook-bullet.notebook-list-depth-2,
+.notebook-bullet.notebook-list-depth-3,
+.notebook-bullet.notebook-list-depth-4 { color: #7c7972; font-size: 13px; }
+.notebook-number.notebook-list-depth-1,
+.notebook-number.notebook-list-depth-2,
+.notebook-number.notebook-list-depth-3,
+.notebook-number.notebook-list-depth-4 { color: #7f887c; font-size: 11px; }
+
+/* Subtask checkboxes read as quieter than the parent they sit under. */
+.notebook-checkbox:not(.notebook-list-depth-0) input { border-width: 1.2px; border-color: #63605a; }
+.notebook-checkbox:not(.notebook-list-depth-0) input:hover { border-color: #97938c; }
+.notebook-checkbox:not(.notebook-list-depth-0) input:checked { background: #85977f; border-color: #85977f; }
+
+.markdown-editor .cm-notebook-list-collapsed { background-color: rgba(220, 121, 89, .05); }
+.notebook-collapsed-summary {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 9px;
+  padding: 1px 8px;
+  border: 1px solid #3d3b36;
+  border-radius: 999px;
+  background: #232220;
+  color: #928f88;
+  cursor: pointer;
+  font: 9px "DM Mono", monospace;
+  text-indent: 0;
+  vertical-align: 1px;
+  transition: border-color 110ms ease, background 110ms ease, color 110ms ease;
+}
+.notebook-collapsed-summary:hover { border-color: #5a554e; background: #2d2b28; color: #cbc7bf; }
+
+.daydock-block-menu {
+  position: absolute;
+  z-index: 85;
+  min-width: 240px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: #252523;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .45);
+  font-family: "DM Sans", system-ui, sans-serif;
+  animation: daydock-slash-in 110ms ease-out;
+}
+.daydock-block-menu button {
+  min-height: 32px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #e3e1db;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 13.5px;
+}
+.daydock-block-menu[hidden],
+.daydock-block-menu button[hidden] { display: none; }
+.daydock-block-menu button:hover,
+.daydock-block-menu button:focus-visible { background: rgba(255, 255, 255, .065); outline: none; }
+.daydock-block-menu kbd { color: #7a7872; font: 12px "DM Sans", system-ui, sans-serif; }
+
+/* Plugin widgets ------------------------------------------------------------
+   One card shell for every block-level plugin widget. Colour carries state
+   (ready / running / overtime / done), never which command produced it, and the
+   cards sit on the text column's left edge rather than floating centred. */
+
+.daydock-card {
+  position: relative;
+  text-indent: 0;
+  width: min(100%, 460px);
+  margin: 14px 0;
+  padding: 11px 13px;
+  display: grid;
+  align-items: center;
+  gap: 3px 9px;
+  border: 1px solid var(--card-line);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .14);
+  font-family: "DM Sans", sans-serif;
+  overflow: hidden;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.card-icon { width: 12px; height: 12px; flex: 0 0 12px; color: var(--faint); }
+.card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: 13px;
+}
+.card-actions { display: inline-flex; align-items: center; gap: 4px; }
+
+.daydock-card button,
+.daydock-time-inline-host button {
+  height: 20px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--card-raised);
+  color: #cbc7bf;
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+.daydock-card button:hover:not(:disabled),
+.daydock-time-inline-host button:hover:not(:disabled) { background: var(--card-raised-hover); color: var(--ink); }
+.daydock-card button:disabled,
+.daydock-time-inline-host button:disabled { cursor: default; opacity: .55; }
+.card-action-primary { min-width: 56px; }
+.card-action-quiet { background: transparent !important; color: var(--faint); }
+.card-action-quiet:hover:not(:disabled) { background: var(--card-raised) !important; color: #cbc7bf; }
+.card-action-quiet[hidden] { display: none; }
+
+.card-progress {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent) var(--time-progress, 0%), var(--card-track) var(--time-progress, 0%));
+  pointer-events: none;
+}
+
+/* Time blocks --------------------------------------------------------------- */
+
+.daydock-time-block-host { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.daydock-time-block-host .time-block-time {
+  color: #d0cdc5;
+  font: 500 13px "DM Sans", sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.daydock-time-inline-host {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  margin-left: 8px;
+  padding: 0 3px 0 8px;
+  border: 1px solid #3e3b36;
+  border-radius: 999px;
+  background: #22211f;
+  color: var(--muted);
+  font: 12px/20px "DM Sans", sans-serif;
+  text-indent: 0;
+  vertical-align: 1px;
+  overflow: hidden;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.daydock-time-inline-host .card-icon { width: 12px; height: 12px; flex-basis: 12px; }
+.daydock-time-inline-host .time-block-time { color: #d0cdc5; font-weight: 500; }
+.daydock-time-inline-host button { height: 18px; padding: 0 8px; font-size: 11px; }
+.daydock-time-inline-host .card-action-primary { min-width: 0; }
+.time-block-readout { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.time-block-planned { color: var(--faint); font-weight: 400; }
+.time-block-planned[hidden] { display: none; }
+
+/* State, shared by both placements. */
+.daydock-card[data-status="running"],
+.daydock-time-inline-host[data-status="running"] { border-color: var(--run-line); background: var(--run-fill); }
+.daydock-card[data-status="paused"] .time-block-time,
+.daydock-time-inline-host[data-status="paused"] .time-block-time { color: var(--muted); }
+.daydock-card[data-status="completed"],
+.daydock-time-inline-host[data-status="completed"] { border-color: var(--done-line); background: var(--done-fill); }
+.daydock-card[data-status="completed"] .card-icon,
+.daydock-time-inline-host[data-status="completed"] .card-icon { color: var(--green); }
+/* Done is a state, not an action: it reads as a quiet label beside the result. */
+.daydock-card[data-status="completed"] .card-action-primary,
+.daydock-time-inline-host[data-status="completed"] .card-action-primary { min-width: 0; padding-left: 4px; background: transparent; color: var(--green); opacity: 1; }
+
+/* Past the plan the countdown runs negative, and the bar fills to its warning tone. */
+.daydock-card[data-overtime="true"] .time-block-time,
+.daydock-time-inline-host[data-overtime="true"] .time-block-time { color: var(--accent); }
+.daydock-card[data-overtime="true"] .card-progress,
+.daydock-time-inline-host[data-overtime="true"] .card-progress { background: var(--accent); }
+
+/* Focus capacity ------------------------------------------------------------ */
+
+.daydock-capacity-host { grid-template-columns: auto minmax(0, 1fr) auto; }
+.daydock-capacity-host .capacity-total {
+  color: var(--muted);
+  font: 12px "DM Sans", sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.daydock-capacity-host .capacity-meter {
+  grid-column: 1 / -1;
+  height: 4px;
+  margin: 5px 0 3px;
+  border-radius: 999px;
+  background: var(--card-track);
+  background-image: linear-gradient(90deg, var(--green) var(--capacity-fill, 0%), transparent var(--capacity-fill, 0%));
+}
+.daydock-capacity-host .capacity-status { grid-column: 1 / -1; color: var(--green); font-size: 10.5px; }
+.daydock-capacity-host[data-over="true"] .capacity-meter { background-image: linear-gradient(90deg, var(--accent) var(--capacity-fill, 0%), transparent var(--capacity-fill, 0%)); }
+.daydock-capacity-host[data-over="true"] .capacity-status { color: var(--accent); }
+.daydock-capacity-host[data-over="true"] .card-icon { color: var(--accent); }
+
+/* Static focus time --------------------------------------------------------- */
+
+.daydock-time-entry-block-host { grid-template-columns: auto minmax(0, 1fr) auto; }
+.daydock-time-entry-block-host .card-value {
+  color: var(--muted);
+  font: 12px "DM Sans", sans-serif;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.daydock-time-entry-inline-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  margin-left: 8px;
+  padding: 0 9px 0 8px;
+  border: 1px solid #3b403c;
+  border-radius: 999px;
+  background: #202421;
+  color: var(--muted);
+  font: 12px/20px "DM Sans", sans-serif;
+  text-indent: 0;
+  vertical-align: 1px;
+}
+.daydock-time-entry-inline-host .card-icon { width: 12px; height: 12px; flex-basis: 12px; color: #829388; }
+.daydock-time-entry-inline-host .card-value { color: #c4cec6; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.daydock-slash-anchor { position: relative; display: inline-block; width: 0; height: 0; vertical-align: bottom; }
+.daydock-slash-menu {
+  position: absolute;
+  top: 8px;
+  left: -6px;
+  z-index: 80;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: #252523;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .45);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: normal;
+  text-indent: 0;
+  letter-spacing: normal;
+  text-align: left;
+  cursor: default;
+  animation: daydock-slash-in 110ms ease-out;
+}
+@keyframes daydock-slash-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.daydock-slash-menu.above { top: auto; bottom: 34px; animation-name: daydock-slash-in-above; }
+@keyframes daydock-slash-in-above { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.daydock-slash-list { max-height: 300px; overflow-y: auto; padding: 6px 4px; display: flex; flex-direction: column; gap: 1px; scrollbar-width: thin; scrollbar-color: #45443f transparent; }
+.daydock-slash-section { padding: 4px 8px 6px; color: #8c8a84; font-size: 11px; font-weight: 600; }
+.daydock-slash-option,
+.daydock-slash-close {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #e3e1db;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.daydock-slash-option.selected,
+.daydock-slash-close:hover { background: rgba(255, 255, 255, .065); }
+.daydock-slash-icon { flex: 0 0 auto; width: 20px; height: 20px; display: grid; place-items: center; color: #b3b0a8; }
+.daydock-slash-icon .card-icon { width: 15px; height: 15px; flex-basis: 15px; color: inherit; }
+.daydock-slash-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daydock-slash-hint { flex: 0 0 auto; color: #7a7872; font: 12px "DM Sans", system-ui, sans-serif; }
+.daydock-slash-footer { padding: 4px; border-top: 1px solid rgba(255, 255, 255, .07); }
+.daydock-slash-close { color: #a9a69f; font-size: 13px; }
+
+.toast-stack { position: fixed; right: 18px; bottom: 18px; z-index: 110; display: grid; gap: 8px; width: min(360px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 12px; border: 1px solid #45433f; border-radius: 10px; background: #262624; color: #d6d3cc; font-size: 11px; line-height: 1.5; box-shadow: 0 14px 42px rgba(0, 0, 0, .42); animation: toast-in 180ms ease-out; }
+.toast > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.toast-icon { flex: 0 0 auto; }
+.toast-success .toast-icon { color: #7fb48b; }
+.toast-error { border-color: #664138; }
+.toast-error .toast-icon { color: #e19b89; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .page-loading { max-width: 700px; margin: 88px auto; display: grid; gap: 24px; padding: 0 45px; }
 .page-loading span { height: 14px; border-radius: 5px; background: #292826; animation: pulse 1.4s infinite alternate; }
 .page-loading span:first-child { height: 44px; width: 62%; }
@@ -362,6 +822,8 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
   .weekly-plan-panel { border-right: 0; border-bottom: 1px solid var(--line); }
   .plan-editor-wrap { overflow: visible; }
   .cm-notebook-h1 { font-size: 40px; }
+  .settings-page { grid-template-columns: 178px minmax(0, 1fr); }
+  .settings-content > .template-manager { grid-template-columns: 208px minmax(0, 1fr); }
   html[data-platform="macos"] .mobile-menu { left: 75px; }
   html[data-platform="macos"] .page-toolbar,
   html[data-platform="macos"] .app-shell.sidebar-collapsed .page-toolbar { padding-left: 116px; }
@@ -378,6 +840,8 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
   .plan-button { padding: 0 7px; font-size: 0; }
   .plan-button svg { margin: 0; }
   .page-location > :not(.page-title-small) { display: none; }
+  .shortcut-settings { padding: 30px 20px 70px; }
+  .shortcut-row { gap: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

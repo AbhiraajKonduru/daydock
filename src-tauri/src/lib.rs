@@ -11,6 +11,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 use tauri::Manager;
+use tempfile::NamedTempFile;
 use walkdir::WalkDir;
 
 #[cfg(target_os = "macos")]
@@ -728,6 +729,34 @@ fn read_notebook_file_blocking(root: String, path: String) -> Result<NotebookFil
     })
 }
 
+fn durable_replace_file(destination: &Path, content: &str) -> Result<(), String> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| "The notebook file has no parent directory.".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let mut temporary = NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
+    temporary
+        .write_all(content.as_bytes())
+        .map_err(|error| error.to_string())?;
+    temporary.flush().map_err(|error| error.to_string())?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    temporary
+        .persist(destination)
+        .map_err(|error| error.error.to_string())?;
+
+    // Persist the directory entry as well on platforms where directory fsync is
+    // supported. A process crash is already safe after persist; this narrows the
+    // remaining window during an abrupt machine shutdown.
+    #[cfg(unix)]
+    if let Ok(directory) = fs::File::open(parent) {
+        let _ = directory.sync_all();
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn write_notebook_file_blocking(
     root: String,
@@ -755,7 +784,7 @@ fn write_notebook_file_blocking(
             }
         }
     }
-    fs::write(destination, &content).map_err(|error| error.to_string())?;
+    durable_replace_file(&destination, &content)?;
     let root_path = clean_root(&root)?;
     if is_searchable_notebook_path(&path) {
         if let Ok(_guard) = search_lock().lock() {

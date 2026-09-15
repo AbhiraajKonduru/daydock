@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { grantLines, statsCsv, submissionsCsv, summarizeDashboard, type AnalyticsEvent, type SubmissionRecord } from "@/lib/dashboardStats";
+import { grantLines, isFeedbackKind, statsCsv, submissionsCsv, summarizeDashboard, type AnalyticsEvent, type SubmissionRecord } from "@/lib/dashboardStats";
 
 type DashboardPayload = {
   events: AnalyticsEvent[];
@@ -16,6 +16,32 @@ const RANGES = [
 ] as const;
 
 const STATUSES = ["new", "reviewing", "planned", "resolved", "published", "rejected"] as const;
+
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "feedback", label: "Feedback" },
+  { id: "testimonial", label: "Stories" },
+  { id: "advisor", label: "Advisors" },
+  { id: "volunteer", label: "Volunteers" },
+] as const;
+
+const KIND_LABELS: Record<SubmissionRecord["kind"], string> = {
+  testimonial: "story",
+  bug: "bug",
+  feature: "feature",
+  improvement: "improvement",
+  general: "general",
+  advisor: "advisor application",
+  volunteer: "volunteer",
+};
+
+const RESPONSE_FIELDS = [
+  { key: "useCase", label: "How they use Daydock" },
+  { key: "problem", label: "Problem they were solving" },
+  { key: "outcome", label: "What changed" },
+  { key: "recommendation", label: "What they would tell others" },
+  { key: "message", label: "Message" },
+] as const;
 
 function downloadFile(name: string, contents: string) {
   const blob = new Blob([contents], { type: "text/csv;charset=utf-8" });
@@ -34,7 +60,7 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [range, setRange] = useState<(typeof RANGES)[number]["id"]>("all");
-  const [filter, setFilter] = useState<"all" | "feedback" | "testimonial">("all");
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
   const [now, setNow] = useState(0);
 
   const load = async () => {
@@ -117,9 +143,9 @@ export default function AdminPage() {
     const since = rangeSpec.days == null ? undefined : until - rangeSpec.days * 24 * 60 * 60 * 1000;
     return data.submissions.filter((item) => {
       if (since != null && item.createdAt < since) return false;
-      if (filter === "testimonial") return item.kind === "testimonial";
-      if (filter === "feedback") return item.kind !== "testimonial";
-      return true;
+      if (filter === "all") return true;
+      if (filter === "feedback") return isFeedbackKind(item.kind);
+      return item.kind === filter;
     });
   }, [data, filter, now, rangeSpec.days]);
 
@@ -129,7 +155,7 @@ export default function AdminPage() {
         <form onSubmit={(event) => void login(event)}>
           <p className="eyebrow"><span /> Private dashboard</p>
           <h1>Impact admin</h1>
-          <p>Download clicks, feedback, and testimonials. This page is not linked from the public site.</p>
+          <p>Download clicks, feedback, testimonials, and advisor and volunteer applications. This page is not linked from the public site.</p>
           <label htmlFor="admin-password">Password</label>
           <input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
           <button className="primary" type="submit" disabled={loading}>{loading ? "Checking…" : "Open dashboard"}</button>
@@ -179,7 +205,8 @@ export default function AdminPage() {
         <article><small>Approx. unique downloaders</small><strong>{stats.uniqueDownloaders}</strong></article>
         <article><small>Visit → download</small><strong>{stats.conversionRate == null ? "—" : `${stats.conversionRate}%`}</strong></article>
         <article><small>Growth vs previous period</small><strong>{stats.growth == null ? "—" : `${stats.growth > 0 ? "+" : ""}${stats.growth}%`}</strong></article>
-        <article><small>Feedback + stories</small><strong>{stats.submissions}</strong></article>
+        <article><small>Feedback / stories</small><strong>{stats.feedback} / {stats.testimonials}</strong></article>
+        <article><small>Advisors / volunteers</small><strong>{stats.advisors} / {stats.volunteers}</strong></article>
       </section>
 
       <section className="adminSplit">
@@ -211,11 +238,18 @@ export default function AdminPage() {
 
       <section>
         <div className="adminSubhead">
-          <h2>Feedback and testimonials</h2>
+          <h2>Responses</h2>
           <div className="rangeRow compact">
-            <button type="button" className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>All</button>
-            <button type="button" className={filter === "feedback" ? "active" : ""} onClick={() => setFilter("feedback")}>Feedback</button>
-            <button type="button" className={filter === "testimonial" ? "active" : ""} onClick={() => setFilter("testimonial")}>Stories</button>
+            {FILTERS.map((item) => {
+              const count = item.id === "all" ? stats.submissions
+                : item.id === "feedback" ? stats.feedback
+                : stats.byKind[item.id] ?? 0;
+              return (
+                <button key={item.id} type="button" className={filter === item.id ? "active" : ""} onClick={() => setFilter(item.id)}>
+                  {item.label} ({count})
+                </button>
+              );
+            })}
           </div>
         </div>
         {visibleSubmissions.length === 0 ? <p className="emptyNote">No submissions in this view.</p> : (
@@ -223,9 +257,12 @@ export default function AdminPage() {
             {visibleSubmissions.map((item) => (
               <article key={item._id}>
                 <header>
-                  <span className="pill">{item.kind}</span>
-                  {item.verified ? <span className="pill verified">Valid Daydock code</span> : <span className="pill">Unverified web submission</span>}
+                  <span className="pill">{KIND_LABELS[item.kind]}</span>
+                  {item.kind === "advisor" || item.kind === "volunteer" ? null
+                    : item.verified ? <span className="pill verified">Valid Daydock code</span>
+                    : <span className="pill">Unverified web submission</span>}
                   {item.quotePermission && <span className="pill">Quote OK</span>}
+                  {item.followUpPermission && <span className="pill">Follow-up OK</span>}
                   <select
                     value={item.status}
                     onChange={(event) => void updateStatus(item._id, event.target.value as (typeof STATUSES)[number])}
@@ -237,13 +274,16 @@ export default function AdminPage() {
                     ))}
                   </select>
                 </header>
-                <h3>{item.title || item.recommendation || item.displayName || "Untitled"}</h3>
-                <p>{item.message || item.outcome || item.useCase || item.problem}</p>
+                <h3>{item.title || item.displayName || (item.kind === "testimonial" ? "Anonymous story" : "Untitled")}</h3>
+                {RESPONSE_FIELDS.filter(({ key }) => item[key]).map(({ key, label }) => (
+                  <p key={key} className="responseField"><small>{label}</small>{item[key]}</p>
+                ))}
                 <p className="meta">
                   {new Date(item.createdAt).toLocaleString()}
                   {item.platform ? ` · ${item.platform}` : ""}
                   {item.appVersion ? ` · v${item.appVersion}` : ""}
                   {item.displayName ? ` · ${item.displayName}` : ""}
+                  {item.displayPreference ? ` · quote as ${item.displayPreference.replace("_", " ")}` : ""}
                   {item.role ? ` · ${item.role}` : ""}
                   {item.email ? ` · ${item.email}` : ""}
                   {item.contact ? ` · ${item.contact}` : ""}

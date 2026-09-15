@@ -12,12 +12,27 @@ import {
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
-import type { AppCommand } from "../lib/shortcuts";
+import { codeMirrorShortcut, type AppCommand } from "../lib/shortcuts";
+import { lineDragExtensions } from "../lib/lineDrag";
+import { hiddenListLines, nestedListExtensions, parseMarkdownListTree } from "../lib/nestedLists";
+import {
+  dismissPluginSlashMenu,
+  movePluginSlashSelection,
+  pluginEditorExtensions,
+  runPluginSlashCommand,
+} from "../plugins/editorHost";
+import { daydockPlugins } from "../plugins/registry";
 
 type Props = {
   value: string;
   onChange: (value: string) => void;
   onOpenLink: (target: string) => void;
+  onRequestSave?: () => Promise<boolean>;
+  onPluginError?: (message: string) => void;
+  pluginsEnabled?: boolean;
+  pluginMode?: "document" | "template";
+  /** Document names offered by `/doc`. */
+  documents?: readonly string[];
 };
 
 type EditorCommand = Extract<AppCommand, "toggle-current-task" | "reset-page-tasks" | "complete-page-tasks">;
@@ -28,17 +43,18 @@ class CheckboxWidget extends WidgetType {
     readonly checked: boolean,
     readonly from: number,
     readonly to: number,
+    readonly depth: number,
   ) {
     super();
   }
 
   eq(other: CheckboxWidget) {
-    return other.checked === this.checked && other.from === this.from && other.to === this.to;
+    return other.checked === this.checked && other.from === this.from && other.to === this.to && other.depth === this.depth;
   }
 
   toDOM(view: EditorView) {
     const label = document.createElement("label");
-    label.className = "notebook-checkbox";
+    label.className = `notebook-checkbox notebook-list-depth-${Math.min(this.depth, 4)}`;
 
     const input = document.createElement("input");
     input.type = "checkbox";
@@ -63,26 +79,34 @@ class CheckboxWidget extends WidgetType {
 }
 
 class BulletWidget extends WidgetType {
+  constructor(readonly depth: number) {
+    super();
+  }
+
+  eq(other: BulletWidget) {
+    return other.depth === this.depth;
+  }
+
   toDOM() {
     const bullet = document.createElement("span");
-    bullet.className = "notebook-bullet";
-    bullet.textContent = "•";
+    bullet.className = `notebook-bullet notebook-list-depth-${Math.min(this.depth, 4)}`;
+    bullet.textContent = this.depth === 0 ? "•" : this.depth === 1 ? "◦" : "–";
     return bullet;
   }
 }
 
 class NumberedListWidget extends WidgetType {
-  constructor(readonly marker: string) {
+  constructor(readonly marker: string, readonly depth: number) {
     super();
   }
 
   eq(other: NumberedListWidget) {
-    return other.marker === this.marker;
+    return other.marker === this.marker && other.depth === this.depth;
   }
 
   toDOM() {
     const number = document.createElement("span");
-    number.className = "notebook-number";
+    number.className = `notebook-number notebook-list-depth-${Math.min(this.depth, 4)}`;
     number.textContent = this.marker;
     return number;
   }
@@ -90,6 +114,8 @@ class NumberedListWidget extends WidgetType {
 
 function previewDecorations(view: EditorView): DecorationSet {
   const ranges: Array<ReturnType<Decoration["range"]>> = [];
+  const listTree = parseMarkdownListTree(view.state.doc.toString());
+  const hiddenLines = hiddenListLines(view.state);
   const activeLines = view.hasFocus
     ? new Set(view.state.selection.ranges.map((range) => view.state.doc.lineAt(range.head).number))
     : new Set<number>();
@@ -98,6 +124,14 @@ function previewDecorations(view: EditorView): DecorationSet {
     let position = visible.from;
     while (position <= visible.to) {
       const line = view.state.doc.lineAt(position);
+      // A collapsed parent already replaces its descendants, so decorating them
+      // would nest one replacement inside another.
+      if (hiddenLines.has(line.number)) {
+        if (line.to >= visible.to || line.to === view.state.doc.length) break;
+        position = line.to + 1;
+        continue;
+      }
+      const listItem = listTree.byLine.get(line.number);
       const isActiveLine = activeLines.has(line.number);
       if (line.text.length === 0) {
         ranges.push(Decoration.line({ class: "cm-blank-line" }).range(line.from));
@@ -167,7 +201,7 @@ function previewDecorations(view: EditorView): DecorationSet {
       if (bullet && !activeLines.has(line.number)) {
         const markerFrom = line.from + bullet[1].length;
         ranges.push(
-          Decoration.replace({ widget: new BulletWidget() }).range(
+          Decoration.replace({ widget: new BulletWidget(listItem?.depth ?? 0) }).range(
             markerFrom,
             markerFrom + 2,
           ),
@@ -179,7 +213,7 @@ function previewDecorations(view: EditorView): DecorationSet {
         const markerFrom = line.from + numberedList[1].length;
         const markerTo = markerFrom + numberedList[2].length + numberedList[3].length + 1;
         ranges.push(
-          Decoration.replace({ widget: new NumberedListWidget(`${numberedList[2]}${numberedList[3]}`) }).range(
+          Decoration.replace({ widget: new NumberedListWidget(`${numberedList[2]}${numberedList[3]}`, listItem?.depth ?? 0) }).range(
             markerFrom,
             markerTo,
           ),
@@ -196,7 +230,7 @@ function previewDecorations(view: EditorView): DecorationSet {
           : checkboxFrom;
         ranges.push(
           Decoration.replace({
-            widget: new CheckboxWidget(match[1].toLowerCase() === "x", checkboxFrom, checkboxFrom + match[0].length),
+            widget: new CheckboxWidget(match[1].toLowerCase() === "x", checkboxFrom, checkboxFrom + match[0].length, listItem?.depth ?? 0),
           }).range(markerFrom, checkboxFrom + match[0].length),
         );
       }
@@ -356,13 +390,31 @@ function completeAllTasks(view: EditorView): boolean {
   return true;
 }
 
-export function MarkdownEditor({ value, onChange, onOpenLink }: Props) {
+export function MarkdownEditor({
+  value,
+  onChange,
+  onOpenLink,
+  onRequestSave = async () => true,
+  onPluginError = () => {},
+  pluginsEnabled = true,
+  pluginMode = "document",
+  documents = [],
+}: Props) {
   const openLinkRef = useRef(onOpenLink);
+  const requestSaveRef = useRef(onRequestSave);
+  const pluginErrorRef = useRef(onPluginError);
+  const documentsRef = useRef(documents);
   const editorRef = useRef<EditorView | null>(null);
 
   useEffect(() => {
     openLinkRef.current = onOpenLink;
   }, [onOpenLink]);
+
+  useEffect(() => {
+    requestSaveRef.current = onRequestSave;
+    pluginErrorRef.current = onPluginError;
+    documentsRef.current = documents;
+  }, [documents, onPluginError, onRequestSave]);
 
   useEffect(() => {
     const runMenuCommand = (event: Event) => {
@@ -381,57 +433,73 @@ export function MarkdownEditor({ value, onChange, onOpenLink }: Props) {
   }, []);
 
   const extensions = useMemo<Extension[]>(
-    () => [
-      markdown(),
-      EditorView.lineWrapping,
-      livePreview,
-      Prec.highest(keymap.of([
-        { key: "Enter", run: continueList },
-        { key: "Backspace", run: removeTaskMarker },
-        { key: "Mod-Enter", run: toggleCurrentTask },
-        { key: "Mod-Alt-r", run: resetAllTasks },
-        { key: "Mod-Alt-f", run: completeAllTasks },
-        indentWithTab,
-      ])),
-      EditorView.domEventHandlers({
-        focus(_event, view) {
-          activeEditor = view;
-          return false;
-        },
-        click(event, view) {
-          const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-          if (position === null) return false;
-          const line = view.state.doc.lineAt(position);
-          const offset = position - line.from;
+    () => {
+      const pluginHost = {
+        plugins: daydockPlugins,
+        mode: pluginMode,
+        documents: () => documentsRef.current,
+        requestSave: () => requestSaveRef.current(),
+        reportError: (message: string) => pluginErrorRef.current(message),
+      };
+      return [
+        markdown(),
+        EditorView.lineWrapping,
+        ...nestedListExtensions(),
+        livePreview,
+        ...lineDragExtensions(pluginHost),
+        Prec.highest(keymap.of([
+          { key: "ArrowDown", run: (view) => pluginsEnabled && movePluginSlashSelection(view, pluginHost, 1) },
+          { key: "ArrowUp", run: (view) => pluginsEnabled && movePluginSlashSelection(view, pluginHost, -1) },
+          { key: "Escape", run: (view) => pluginsEnabled && dismissPluginSlashMenu(view, pluginHost) },
+          { key: "Enter", run: (view) => pluginsEnabled && runPluginSlashCommand(view, pluginHost) },
+          { key: "Enter", run: continueList },
+          { key: "Backspace", run: removeTaskMarker },
+          { key: codeMirrorShortcut("toggle-current-task"), run: toggleCurrentTask },
+          { key: "Mod-Alt-r", run: resetAllTasks },
+          { key: "Mod-Alt-f", run: completeAllTasks },
+          indentWithTab,
+        ])),
+        ...(pluginsEnabled ? pluginEditorExtensions(pluginHost) : []),
+        EditorView.domEventHandlers({
+          focus(_event, view) {
+            activeEditor = view;
+            return false;
+          },
+          click(event, view) {
+            const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+            if (position === null) return false;
+            const line = view.state.doc.lineAt(position);
+            const offset = position - line.from;
 
-          for (const match of line.text.matchAll(/\[\[([^\]]+)\]\]/g)) {
-            if (match.index === undefined) continue;
-            const linkStart = match.index + 2;
-            const linkEnd = linkStart + match[1].length;
-            if (offset >= linkStart && offset < linkEnd) {
-              event.preventDefault();
-              view.contentDOM.blur();
-              openLinkRef.current(match[1]);
-              return true;
+            for (const match of line.text.matchAll(/\[\[([^\]]+)\]\]/g)) {
+              if (match.index === undefined) continue;
+              const linkStart = match.index + 2;
+              const linkEnd = linkStart + match[1].length;
+              if (offset >= linkStart && offset < linkEnd) {
+                event.preventDefault();
+                view.contentDOM.blur();
+                openLinkRef.current(match[1]);
+                return true;
+              }
             }
-          }
 
-          const markdownLink = /\[([^\]]+)\]\(([^)]+\.md)\)/g;
-          for (const match of line.text.matchAll(markdownLink)) {
-            if (match.index === undefined) continue;
-            const linkStart = match.index + 1;
-            const linkEnd = linkStart + match[1].length;
-            if (offset >= linkStart && offset < linkEnd) {
-              event.preventDefault();
-              view.contentDOM.blur();
-              openLinkRef.current(match[2]);
-              return true;
+            const markdownLink = /\[([^\]]+)\]\(([^)]+\.md)\)/g;
+            for (const match of line.text.matchAll(markdownLink)) {
+              if (match.index === undefined) continue;
+              const linkStart = match.index + 1;
+              const linkEnd = linkStart + match[1].length;
+              if (offset >= linkStart && offset < linkEnd) {
+                event.preventDefault();
+                view.contentDOM.blur();
+                openLinkRef.current(match[2]);
+                return true;
+              }
             }
-          }
-          return false;
-        },
-      }),
-    ],
+            return false;
+          },
+        }),
+      ];
+    },
     [],
   );
 
