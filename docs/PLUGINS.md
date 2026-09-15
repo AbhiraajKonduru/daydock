@@ -98,9 +98,18 @@ The rendered block compares that capacity with all timed blocks and static time
 entries in the document. Re-running `/capacity` moves the existing marker rather
 than adding a second one, so a page never shows two disagreeing totals.
 
-A block still in progress is charged the time it planned. A finished one is
-charged what it actually took, so a 1h block closed after 20m stops reading as a
-lost hour, and one finished 15m late is charged the full 1h 15m.
+The card keeps planned and actual time apart. **Done** is the time tracked on
+blocks so far, live while one runs, plus static focus time. **Planned** is every
+block's plan plus static focus time; a `/time` entry has no timer, so it counts
+as both planned and done. The bar's light layer is where the page is heading: a finished block
+counts what it actually took, and an unfinished one counts its plan, or more once
+it has run past it. **Left** (or **Over**) compares that projection with the
+capacity, and a line such as "25m over plan" appears whenever the projection has
+drifted from the plan, so a 1h block closed after 20m stops reading as a lost
+hour, and one finished 15m late counts the full 1h 15m.
+
+A finished block freezes its countdown where Finish stopped it, so `-0:06 / 1m`
+records six seconds of overtime and `0:20 / 1m` records finishing early.
 
 ### Document links
 

@@ -6,6 +6,7 @@ import {
   chargedMinutes,
   createCapacitySource,
   durationProblemMessage,
+  elapsedMilliseconds,
   findCapacityAnchors,
   findTimeBlockAnchors,
   findTimeEntryAnchors,
@@ -52,22 +53,48 @@ function capacityCommand(
   return { document, selection: Math.max(0, selection) };
 }
 
-/**
- * What the page has spent against its capacity. A block still in progress is
- * charged what it planned; a finished one is charged what it actually took, so
- * a 1h block closed after 20m stops reading as a lost hour.
- */
-export function allocatedFocusMinutes(document: string, now = Date.now()): number {
+export type CapacityBreakdown = {
+  /** Everything scheduled: every block's plan plus static focus time. */
+  plannedMinutes: number;
+  /** Time actually tracked on blocks so far, including a block still running. */
+  doneMinutes: number;
+  /**
+   * Where the page is heading. A finished block counts what it took; an
+   * unfinished one counts its plan, or more once it has run past it.
+   */
+  projectedMinutes: number;
+};
+
+export function capacityBreakdown(document: string, now = Date.now()): CapacityBreakdown {
   const timeBlocks = parseDocumentState(document).timeBlocks;
-  const blockMinutes = findTimeBlockAnchors(document).reduce(
-    (total, block) => total + chargedMinutes(timeBlocks[block.id], block.plannedMinutes, now),
-    0,
-  );
-  const enteredMinutes = findTimeEntryAnchors(document).reduce(
-    (total, entry) => total + entry.minutes,
-    0,
-  );
-  return blockMinutes + enteredMinutes;
+  // Static focus time has no timer to run, so it counts as planned and done at once.
+  const entered = findTimeEntryAnchors(document).reduce((total, entry) => total + entry.minutes, 0);
+  let plannedMinutes = entered;
+  let projectedMinutes = entered;
+  let doneMilliseconds = entered * 60_000;
+  for (const block of findTimeBlockAnchors(document)) {
+    const state = timeBlocks[block.id];
+    const elapsed = state ? elapsedMilliseconds(state, now) : 0;
+    const charged = chargedMinutes(state, block.plannedMinutes, now);
+    plannedMinutes += block.plannedMinutes;
+    doneMilliseconds += elapsed;
+    projectedMinutes += state?.status === "completed"
+      ? charged
+      : Math.max(charged, Math.round(elapsed / 60_000));
+  }
+  return { plannedMinutes, doneMinutes: Math.round(doneMilliseconds / 60_000), projectedMinutes };
+}
+
+/** What the page is expected to spend against its capacity. */
+export function allocatedFocusMinutes(document: string, now = Date.now()): number {
+  return capacityBreakdown(document, now).projectedMinutes;
+}
+
+function element(tag: string, className: string, text = "") {
+  const node = globalThis.document.createElement(tag);
+  if (className) node.className = className;
+  node.textContent = text;
+  return node;
 }
 
 export const capacityPlugin: DaydockPlugin = {
@@ -84,49 +111,77 @@ export const capacityPlugin: DaydockPlugin = {
   decorateLine({ document, line }) {
     const capacity = capacityAnchorAt(document, line.from);
     if (!capacity) return [];
-    const allocatedMinutes = allocatedFocusMinutes(document);
-    const remaining = capacity.availableMinutes - allocatedMinutes;
-    const over = remaining < 0;
-    const filled = capacity.availableMinutes > 0
-      ? Math.min(100, (allocatedMinutes / capacity.availableMinutes) * 100)
-      : 0;
+    const snapshot = capacityBreakdown(document);
 
     return [{
       from: capacity.from,
       to: capacity.to,
       widget: {
-        key: `capacity:${capacity.availableMinutes}:${allocatedMinutes}`,
+        key: `capacity:${capacity.availableMinutes}:${snapshot.plannedMinutes}:${snapshot.projectedMinutes}`,
         placement: "block",
         className: "daydock-card daydock-capacity-host",
-        mount(element) {
-          element.setAttribute("contenteditable", "false");
-          element.dataset.over = String(over);
-          element.setAttribute(
-            "aria-label",
-            over
-              ? `Focus capacity: ${formatDuration(Math.abs(remaining))} over ${capacity.durationLabel}`
-              : `Focus capacity: ${formatDuration(remaining)} of ${capacity.durationLabel} still free`,
+        mount(host, context) {
+          host.setAttribute("contenteditable", "false");
+
+          const meter = element("span", "capacity-meter");
+          const projectedBar = element("span", "capacity-projected");
+          const doneBar = element("span", "capacity-done");
+          meter.append(projectedBar, doneBar);
+
+          const stats = element("span", "capacity-stats");
+          const stat = (kind: string, label: string) => {
+            const name = element("small", "", label);
+            const value = element("strong", "");
+            const wrapper = element("span", `capacity-stat ${kind}`);
+            wrapper.append(name, value);
+            stats.append(wrapper);
+            return { name, value };
+          };
+          const done = stat("done", "Done");
+          const planned = stat("planned", "Planned");
+          const left = stat("left", "Left");
+          const drift = element("small", "capacity-drift");
+
+          host.append(
+            pluginIcon("gauge"),
+            element("span", "card-title", "Focus capacity"),
+            element("span", "capacity-total", `${capacity.durationLabel} available`),
+            meter,
+            stats,
+            drift,
           );
 
-          const title = globalThis.document.createElement("span");
-          title.className = "card-title";
-          title.textContent = "Focus capacity";
+          const share = (minutes: number) => capacity.availableMinutes > 0
+            ? `${Math.min(100, (minutes / capacity.availableMinutes) * 100)}%`
+            : "0%";
 
-          const total = globalThis.document.createElement("span");
-          total.className = "capacity-total";
-          total.textContent = `${formatDuration(allocatedMinutes)} of ${capacity.durationLabel}`;
+          // Repaints every second so a running block's tracked time stays live.
+          const paint = () => {
+            const totals = capacityBreakdown(context.getDocument());
+            const remaining = capacity.availableMinutes - totals.projectedMinutes;
+            const over = remaining < 0;
+            const difference = totals.projectedMinutes - totals.plannedMinutes;
 
-          const meter = globalThis.document.createElement("span");
-          meter.className = "capacity-meter";
-          meter.style.setProperty("--capacity-fill", `${filled}%`);
+            host.dataset.over = String(over);
+            projectedBar.style.width = share(totals.projectedMinutes);
+            doneBar.style.width = share(totals.doneMinutes);
+            done.value.textContent = formatDuration(totals.doneMinutes);
+            planned.value.textContent = formatDuration(totals.plannedMinutes);
+            left.name.textContent = over ? "Over" : "Left";
+            left.value.textContent = formatDuration(Math.abs(remaining));
+            drift.hidden = difference === 0;
+            drift.dataset.direction = difference > 0 ? "over" : "under";
+            drift.textContent = `${formatDuration(Math.abs(difference))} ${difference > 0 ? "over" : "under"} plan`;
+            host.setAttribute(
+              "aria-label",
+              `Focus capacity: ${formatDuration(totals.doneMinutes)} done, ${formatDuration(totals.plannedMinutes)} planned, `
+                + `${formatDuration(Math.abs(remaining))} ${over ? "over" : "left"} of ${capacity.durationLabel}`,
+            );
+          };
 
-          const status = globalThis.document.createElement("small");
-          status.className = "capacity-status";
-          status.textContent = over
-            ? `${formatDuration(Math.abs(remaining))} over capacity`
-            : `${formatDuration(remaining)} still free`;
-
-          element.append(pluginIcon("gauge"), title, total, meter, status);
+          paint();
+          const timer = window.setInterval(paint, 1000);
+          return () => window.clearInterval(timer);
         },
       },
     }];

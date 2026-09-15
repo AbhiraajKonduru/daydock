@@ -1,9 +1,9 @@
-import { FolderOpen, Keyboard, LayoutTemplate, MessageSquare, Settings2 } from "lucide-react";
+import { Download, FolderOpen, Keyboard, LayoutTemplate, MessageSquare, Settings2 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { DesktopPlatform } from "../lib/platform";
 import { shortcutsForPlatform } from "../lib/shortcuts";
 
-export type SettingsSection = "templates" | "shortcuts";
+export type SettingsSection = "templates" | "shortcuts" | "updates";
 
 type Props = {
   section: SettingsSection;
@@ -11,6 +11,8 @@ type Props = {
   notebookName: string;
   notebookRoot: string;
   templates: ReactNode;
+  updates: ReactNode;
+  updateAvailable: boolean;
   onSectionChange: (section: SettingsSection) => void;
   onFeedback: () => void;
   onChooseFolder: () => void;
@@ -52,6 +54,8 @@ export function SettingsPage({
   notebookName,
   notebookRoot,
   templates,
+  updates,
+  updateAvailable,
   onSectionChange,
   onFeedback,
   onChooseFolder,
@@ -66,6 +70,10 @@ export function SettingsPage({
         <button className={section === "shortcuts" ? "active" : ""} onClick={() => onSectionChange("shortcuts")}>
           <Keyboard size={16} /><span>Keyboard shortcuts</span>
         </button>
+        <button className={section === "updates" ? "active" : ""} onClick={() => onSectionChange("updates")}>
+          <Download size={16} /><span>Updates</span>
+          {updateAvailable && <span className="settings-badge" title="An update is available" />}
+        </button>
         <button onClick={onFeedback}>
           <MessageSquare size={16} /><span>Share feedback</span>
         </button>
@@ -75,7 +83,7 @@ export function SettingsPage({
         </button>
       </aside>
       <div className="settings-content">
-        {section === "templates" ? templates : <ShortcutSettings platform={platform} />}
+        {section === "templates" ? templates : section === "updates" ? updates : <ShortcutSettings platform={platform} />}
       </div>
     </div>
   );

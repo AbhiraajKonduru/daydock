@@ -166,7 +166,7 @@ Current beta builds are not code signed, so Windows SmartScreen and macOS Gateke
 
 Packaging for the Arch User Repository is not available yet, but the AppImage can run on Arch Linux without a distribution-specific package. You can also get checksums, source archives, and every build artifact from the repository's [Releases page](https://github.com/AbhiraajKonduru/daydock/releases).
 
-Daydock checks its signed beta channel in the background. When an update is available, you can install and restart from inside the app or choose **Later** and use the toolbar reminder when it is convenient. Updater signatures verify that later builds came from the Daydock release pipeline; they are separate from the operating-system code signing that removes first-launch warnings.
+Daydock checks its signed beta channel in the background. When an update is available, you can install and restart from inside the app or choose **Later** and use the toolbar reminder when it is convenient. **Settings → Updates** shows the installed version and when Daydock last checked, and lets you check for a new beta and install it on demand. Updater signatures verify that later builds came from the Daydock release pipeline; they are separate from the operating-system code signing that removes first-launch warnings.
 
 ## Run locally
 

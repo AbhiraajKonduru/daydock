@@ -1,4 +1,5 @@
-import { ArrowDownToLine, Download, RefreshCw, X } from "lucide-react";
+import { ArrowDownToLine, CircleAlert, CircleCheck, Download, RefreshCw, X } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -13,7 +14,12 @@ const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 type UpdateStage = "idle" | "saving" | "downloading" | "installing" | "error";
 
+/** Where the most recent check left things, for the Updates settings section. */
+export type UpdateCheckStatus = "idle" | "checking" | "up-to-date" | "available" | "error";
+
 export type AppUpdater = {
+  enabled: boolean;
+  currentVersion: string | null;
   update: Update | null;
   modalOpen: boolean;
   reminderVisible: boolean;
@@ -21,8 +27,12 @@ export type AppUpdater = {
   downloaded: number;
   contentLength?: number;
   error: string;
+  checkStatus: UpdateCheckStatus;
+  checkError: string;
+  lastChecked: number | null;
   open: () => void;
   later: () => void;
+  checkNow: () => Promise<void>;
   install: (beforeInstall: () => Promise<void>) => Promise<void>;
 };
 
@@ -36,6 +46,7 @@ function displayVersion(version: string): string {
 }
 
 export function useAppUpdater(enabled: boolean, canPrompt = true): AppUpdater {
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [update, setUpdate] = useState<Update | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [reminderVisible, setReminderVisible] = useState(false);
@@ -43,6 +54,9 @@ export function useAppUpdater(enabled: boolean, canPrompt = true): AppUpdater {
   const [downloaded, setDownloaded] = useState(0);
   const [contentLength, setContentLength] = useState<number>();
   const [error, setError] = useState("");
+  const [checkStatus, setCheckStatus] = useState<UpdateCheckStatus>("idle");
+  const [checkError, setCheckError] = useState("");
+  const [lastChecked, setLastChecked] = useState<number | null>(null);
   const checkingRef = useRef(false);
   const updateRef = useRef<Update | null>(null);
   const canPromptRef = useRef(canPrompt);
@@ -54,26 +68,56 @@ export function useAppUpdater(enabled: boolean, canPrompt = true): AppUpdater {
     canPromptRef.current = canPrompt;
   }, [canPrompt]);
 
-  const checkForUpdate = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false;
+    // Outside the desktop app there is no Tauri runtime to ask.
+    getVersion()
+      .then((version) => { if (!cancelled) setCurrentVersion(version); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  /**
+   * Background checks stay quiet and may prompt. A check the person asks for
+   * from Settings reports every outcome, including failures, and shows a found
+   * update in place rather than interrupting with a dialog.
+   */
+  const checkForUpdate = useCallback(async (manual = false) => {
     if (!enabled || checkingRef.current) return;
     checkingRef.current = true;
+    if (manual) {
+      setCheckStatus("checking");
+      setCheckError("");
+    }
     try {
       const available = await check({ timeout: 15_000 });
-      if (!available) return;
+      setLastChecked(Date.now());
+      if (!available) {
+        setCheckStatus(updateRef.current ? "available" : "up-to-date");
+        return;
+      }
 
       const previous = updateRef.current;
       if (previous && previous.version === available.version) {
         await available.close();
+        setCheckStatus("available");
         return;
       }
       if (previous) void previous.close();
 
       updateRef.current = available;
       setUpdate(available);
+      setCheckStatus("available");
       setStage("idle");
       setError("");
       setDownloaded(0);
       setContentLength(undefined);
+
+      if (manual) {
+        setModalOpen(false);
+        setReminderVisible(true);
+        return;
+      }
 
       const deferred = isUpdateDeferred(
         available.version,
@@ -83,9 +127,15 @@ export function useAppUpdater(enabled: boolean, canPrompt = true): AppUpdater {
       setModalOpen(shouldPrompt);
       setReminderVisible(!shouldPrompt);
     } catch (caught) {
-      // Startup update checks are deliberately quiet. A temporary network or
-      // release-host failure should never interrupt the user's planning flow.
-      console.warn("Daydock update check failed", caught);
+      if (manual) {
+        const detail = caught instanceof Error ? caught.message : String(caught);
+        setCheckStatus("error");
+        setCheckError(`Daydock couldn't reach the update server. Check your connection and try again. ${detail}`);
+      } else {
+        // Startup update checks are deliberately quiet. A temporary network or
+        // release-host failure should never interrupt the user's planning flow.
+        console.warn("Daydock update check failed", caught);
+      }
     } finally {
       checkingRef.current = false;
     }
@@ -100,6 +150,8 @@ export function useAppUpdater(enabled: boolean, canPrompt = true): AppUpdater {
       window.clearInterval(interval);
     };
   }, [checkForUpdate, enabled]);
+
+  const checkNow = useCallback(() => checkForUpdate(true), [checkForUpdate]);
 
   const open = useCallback(() => {
     if (!updateRef.current) return;
@@ -153,6 +205,8 @@ export function useAppUpdater(enabled: boolean, canPrompt = true): AppUpdater {
   }, [stage]);
 
   return {
+    enabled,
+    currentVersion,
     update,
     modalOpen,
     reminderVisible,
@@ -160,8 +214,12 @@ export function useAppUpdater(enabled: boolean, canPrompt = true): AppUpdater {
     downloaded,
     contentLength,
     error,
+    checkStatus,
+    checkError,
+    lastChecked,
     open,
     later,
+    checkNow,
     install,
   };
 }
@@ -186,22 +244,48 @@ type UpdateModalProps = {
   beforeInstall: () => Promise<void>;
 };
 
-export function UpdateModal({ updater, beforeInstall }: UpdateModalProps) {
-  const { update, modalOpen, stage } = updater;
-  const busy = stage === "saving" || stage === "downloading" || stage === "installing";
+function isBusy(stage: UpdateStage) {
+  return stage === "saving" || stage === "downloading" || stage === "installing";
+}
+
+/** Download and install progress, shared by the dialog and the settings section. */
+function UpdateProgress({ updater }: { updater: AppUpdater }) {
+  const { stage } = updater;
+  if (!isBusy(stage)) return null;
   const percent = updater.contentLength
     ? Math.min(100, Math.round((updater.downloaded / updater.contentLength) * 100))
     : undefined;
-
-  if (!update || !modalOpen) return null;
-
   const status = stage === "saving"
     ? "Saving your open pages…"
     : stage === "downloading"
       ? percent === undefined ? "Downloading update…" : `Downloading update… ${percent}%`
-      : stage === "installing"
-        ? "Installing and restarting…"
-        : "";
+      : "Installing and restarting…";
+
+  return (
+    <div className="update-progress" aria-live="polite">
+      <div className={percent === undefined && stage === "downloading" ? "indeterminate" : ""}>
+        <span style={{ width: stage === "saving" ? "8%" : stage === "installing" ? "100%" : `${percent ?? 32}%` }} />
+      </div>
+      <p>{status}</p>
+    </div>
+  );
+}
+
+function InstallButton({ updater, beforeInstall }: UpdateModalProps) {
+  const busy = isBusy(updater.stage);
+  return (
+    <button className="primary-button" onClick={() => void updater.install(beforeInstall)} disabled={busy}>
+      {updater.stage === "error" ? <RefreshCw size={15} /> : <Download size={15} />}
+      {updater.stage === "error" ? "Try again" : busy ? "Updating…" : "Update and restart"}
+    </button>
+  );
+}
+
+export function UpdateModal({ updater, beforeInstall }: UpdateModalProps) {
+  const { update, modalOpen, stage } = updater;
+  const busy = isBusy(stage);
+
+  if (!update || !modalOpen) return null;
 
   return (
     <div className="modal-backdrop" onMouseDown={() => { if (!busy) updater.later(); }}>
@@ -234,23 +318,105 @@ export function UpdateModal({ updater, beforeInstall }: UpdateModalProps) {
             <p>{update.body}</p>
           </div>
         )}
-        {busy && (
-          <div className="update-progress" aria-live="polite">
-            <div className={percent === undefined && stage === "downloading" ? "indeterminate" : ""}>
-              <span style={{ width: stage === "saving" ? "8%" : stage === "installing" ? "100%" : `${percent ?? 32}%` }} />
-            </div>
-            <p>{status}</p>
-          </div>
-        )}
+        <UpdateProgress updater={updater} />
         {updater.error && <p className="update-error" role="alert">{updater.error}</p>}
         <div className="modal-actions">
           <button className="text-button" onClick={updater.later} disabled={busy}>Later</button>
-          <button className="primary-button" onClick={() => void updater.install(beforeInstall)} disabled={busy}>
-            {stage === "error" ? <RefreshCw size={15} /> : <Download size={15} />}
-            {stage === "error" ? "Try again" : busy ? "Updating…" : "Update and restart"}
-          </button>
+          <InstallButton updater={updater} beforeInstall={beforeInstall} />
         </div>
       </section>
     </div>
+  );
+}
+
+function checkedAt(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+type Tone = "neutral" | "good" | "available" | "error";
+
+export function UpdateSettings({ updater, beforeInstall }: UpdateModalProps) {
+  const { update, checkStatus, lastChecked } = updater;
+  const busy = isBusy(updater.stage);
+  const checking = checkStatus === "checking";
+
+  let tone: Tone = "neutral";
+  let title = "Daydock checks for updates automatically";
+  let detail = "It looks for a new beta shortly after launch and every few hours after that.";
+  if (!updater.enabled) {
+    title = "Updates run in the desktop app";
+    detail = "This preview can’t check for or install updates. Open Daydock on your computer to update.";
+  } else if (update) {
+    tone = "available";
+    title = `Daydock ${displayVersion(update.version)} is available`;
+    detail = updater.currentVersion
+      ? `You’re on ${displayVersion(updater.currentVersion)}. Daydock saves your open pages before installing, then restarts into the new version.`
+      : "Daydock saves your open pages before installing, then restarts into the new version.";
+  } else if (checking) {
+    title = "Checking for updates…";
+    detail = "Looking for a newer beta release.";
+  } else if (checkStatus === "error") {
+    tone = "error";
+    title = "Couldn’t check for updates";
+    detail = updater.checkError;
+  } else if (checkStatus === "up-to-date") {
+    tone = "good";
+    title = "You’re up to date";
+    detail = updater.currentVersion
+      ? `${displayVersion(updater.currentVersion)} is the newest beta.`
+      : "You have the newest beta.";
+  }
+
+  const icon = tone === "good"
+    ? <CircleCheck size={17} />
+    : tone === "available"
+      ? <ArrowDownToLine size={17} />
+      : tone === "error"
+        ? <CircleAlert size={17} />
+        : <RefreshCw size={17} className={checking ? "spinning" : ""} />;
+
+  return (
+    <section className="update-settings" aria-labelledby="update-settings-title">
+      <header className="settings-content-heading">
+        <p className="eyebrow">Settings</p>
+        <h1 id="update-settings-title">Updates</h1>
+        <p>Keep Daydock on the newest beta. Your notebook stays on your computer throughout.</p>
+      </header>
+      <div className="update-settings-body">
+        <div className="update-card" data-tone={tone} aria-live="polite">
+          <div className="update-card-status">
+            <span className="update-card-icon" aria-hidden="true">{icon}</span>
+            <div>
+              <strong>{title}</strong>
+              {detail && <p>{detail}</p>}
+            </div>
+          </div>
+          {update?.body && (
+            <div className="update-notes">
+              <strong>What’s new</strong>
+              <p>{update.body}</p>
+            </div>
+          )}
+          <UpdateProgress updater={updater} />
+          {updater.error && <p className="update-error" role="alert">{updater.error}</p>}
+          <div className="update-card-actions">
+            <button
+              className="update-check-button"
+              onClick={() => void updater.checkNow()}
+              disabled={!updater.enabled || checking || busy}
+            >
+              <RefreshCw size={14} className={checking ? "spinning" : ""} />
+              {checking ? "Checking…" : "Check for updates"}
+            </button>
+            {update && <InstallButton updater={updater} beforeInstall={beforeInstall} />}
+          </div>
+        </div>
+        <dl className="update-facts">
+          <div><dt>Installed version</dt><dd>{updater.currentVersion ? displayVersion(updater.currentVersion) : "Unknown"}</dd></div>
+          <div><dt>Release channel</dt><dd>Beta</dd></div>
+          <div><dt>Last checked</dt><dd>{lastChecked ? checkedAt(lastChecked) : "Not yet"}</dd></div>
+        </dl>
+      </div>
+    </section>
   );
 }

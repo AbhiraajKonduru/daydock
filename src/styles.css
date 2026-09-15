@@ -237,6 +237,34 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 
 .settings-content { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
 .settings-content > .template-manager { min-height: 0; height: 100%; }
+.settings-navigation .settings-badge { flex: 0 0 auto; width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px rgba(220, 121, 89, .14); }
+
+.update-settings { min-height: 0; overflow-y: auto; padding: 44px 40px 90px; scrollbar-width: thin; scrollbar-color: #47453f transparent; }
+.update-settings-body { max-width: 620px; margin: 0 auto; display: grid; gap: 14px; }
+.update-card { padding: 18px; border: 1px solid var(--line-soft); border-radius: 11px; background: #1f1f1d; transition: border-color 140ms ease, background-color 140ms ease; }
+.update-card[data-tone="available"] { border-color: #5a3f34; background: #221c19; }
+.update-card[data-tone="error"] { border-color: #4f3530; }
+.update-card-status { display: flex; align-items: flex-start; gap: 12px; }
+.update-card-icon { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: #2a2927; color: var(--muted); }
+.update-card[data-tone="good"] .update-card-icon { background: #1f2a22; color: var(--green); }
+.update-card[data-tone="available"] .update-card-icon { background: var(--accent-soft); color: var(--accent); }
+.update-card[data-tone="error"] .update-card-icon { background: #2b201d; color: #e19b89; }
+.update-card-status strong { display: block; margin-top: 1px; color: var(--ink); font-size: 13px; font-weight: 650; }
+.update-card-status p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.update-card .update-notes,
+.update-card .update-progress,
+.update-card .update-error { margin-top: 16px; }
+.update-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.update-check-button { height: 32px; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid #3d3b36; border-radius: 8px; background: #252523; color: #d7d4cd; cursor: pointer; font-size: 11px; font-weight: 600; transition: background-color 120ms ease, color 120ms ease; }
+.update-check-button:hover:not(:disabled) { background: #2e2d2a; color: var(--ink); }
+.update-check-button:disabled { cursor: default; opacity: .5; }
+.update-settings .spinning { animation: update-spin 900ms linear infinite; }
+@keyframes update-spin { to { transform: rotate(360deg); } }
+.update-facts { margin: 0; display: grid; border: 1px solid var(--line-soft); border-radius: 9px; overflow: hidden; }
+.update-facts > div { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 13px; font-size: 11px; }
+.update-facts > div + div { border-top: 1px solid var(--line-soft); }
+.update-facts dt { color: #c9c6bf; }
+.update-facts dd { margin: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .shortcut-settings { min-height: 0; overflow-y: auto; padding: 44px 40px 90px; scrollbar-width: thin; scrollbar-color: #47453f transparent; }
 .settings-content-heading { max-width: 620px; margin: 0 auto 27px; }
@@ -297,7 +325,8 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
   place-items: center;
   border: 0;
   border-radius: 4px;
-  background: transparent;
+  /* Opaque, so a nested list's guide line passes behind the handle. */
+  background: var(--paper);
   color: #6f6d67;
   cursor: grab;
   opacity: 0;
@@ -310,8 +339,13 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 .daydock-line-handle::before { content: ""; position: absolute; inset: -2px -10px -2px -4px; }
 .daydock-line-handle.visible { opacity: 1; pointer-events: auto; }
 .daydock-line-handle:hover,
-.daydock-line-handle:focus-visible { background: rgba(255, 255, 255, .07); color: #a9a69f; outline: none; }
-.daydock-line-handle.dragging { cursor: grabbing; background: rgba(255, 255, 255, .07); color: #c9c6bf; }
+.daydock-line-handle:focus-visible { background: linear-gradient(rgba(255, 255, 255, .07), rgba(255, 255, 255, .07)) var(--paper); color: #a9a69f; outline: none; }
+.daydock-line-handle.dragging { cursor: grabbing; background: linear-gradient(rgba(255, 255, 255, .07), rgba(255, 255, 255, .07)) var(--paper); color: #c9c6bf; }
+/* On a selected row the handle carries the same tint, so it never reads as a dark patch. */
+.daydock-line-handle.on-selection { background: linear-gradient(rgba(220, 121, 89, .1), rgba(220, 121, 89, .1)) var(--paper); }
+.daydock-line-handle.on-selection:hover,
+.daydock-line-handle.on-selection:focus-visible,
+.daydock-line-handle.on-selection.dragging { background: linear-gradient(rgba(255, 255, 255, .07), rgba(255, 255, 255, .07)), linear-gradient(rgba(220, 121, 89, .1), rgba(220, 121, 89, .1)) var(--paper); }
 .daydock-line-handle > span { width: 8px; height: 13px; display: grid; grid-template-columns: repeat(2, 3px); grid-auto-rows: 3px; gap: 2px; }
 .daydock-line-handle i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
 .daydock-line-drop-indicator {
@@ -619,9 +653,11 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
 .daydock-card[data-overtime="true"] .card-progress,
 .daydock-time-inline-host[data-overtime="true"] .card-progress { background: var(--accent); }
 
-/* Focus capacity ------------------------------------------------------------ */
+/* Focus capacity ------------------------------------------------------------
+   Two layers against the capacity: where the page is heading (light) and the
+   time actually tracked so far (solid). */
 
-.daydock-capacity-host { grid-template-columns: auto minmax(0, 1fr) auto; }
+.daydock-capacity-host { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 8px; }
 .daydock-capacity-host .capacity-total {
   color: var(--muted);
   font: 12px "DM Sans", sans-serif;
@@ -629,16 +665,30 @@ html[data-platform="macos"][data-fullscreen="true"] .app-shell.sidebar-collapsed
   white-space: nowrap;
 }
 .daydock-capacity-host .capacity-meter {
+  position: relative;
   grid-column: 1 / -1;
-  height: 4px;
-  margin: 5px 0 3px;
+  height: 6px;
+  overflow: hidden;
   border-radius: 999px;
   background: var(--card-track);
-  background-image: linear-gradient(90deg, var(--green) var(--capacity-fill, 0%), transparent var(--capacity-fill, 0%));
 }
-.daydock-capacity-host .capacity-status { grid-column: 1 / -1; color: var(--green); font-size: 10.5px; }
-.daydock-capacity-host[data-over="true"] .capacity-meter { background-image: linear-gradient(90deg, var(--accent) var(--capacity-fill, 0%), transparent var(--capacity-fill, 0%)); }
-.daydock-capacity-host[data-over="true"] .capacity-status { color: var(--accent); }
+.capacity-meter > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; transition: width 240ms ease; }
+.capacity-projected { background: rgba(146, 170, 152, .34); }
+.capacity-done { background: var(--green); }
+.daydock-capacity-host[data-over="true"] .capacity-projected { background: rgba(220, 121, 89, .4); }
+.daydock-capacity-host .capacity-stats { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.capacity-stat { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.capacity-stat small { display: inline-flex; align-items: center; gap: 5px; color: var(--faint); font-size: 11.5px; }
+.capacity-stat.done small::before,
+.capacity-stat.planned small::before { content: ""; width: 7px; height: 7px; border-radius: 2px; }
+.capacity-stat.done small::before { background: var(--green); }
+.capacity-stat.planned small::before { background: rgba(146, 170, 152, .5); }
+.capacity-stat strong { color: #d7d4cd; font-weight: 500; }
+.daydock-capacity-host[data-over="true"] .capacity-stat.left strong { color: var(--accent); }
+.daydock-capacity-host .capacity-drift { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; }
+.capacity-drift[data-direction="over"] { color: var(--accent); }
+.capacity-drift[data-direction="under"] { color: var(--green); }
+.capacity-drift[hidden] { display: none; }
 .daydock-capacity-host[data-over="true"] .card-icon { color: var(--accent); }
 
 /* Static focus time --------------------------------------------------------- */

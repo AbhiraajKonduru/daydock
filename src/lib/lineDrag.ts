@@ -203,6 +203,7 @@ class LineDragControls {
   private menuLine: number | null = null;
   private settleTimer: number | null = null;
   private hideTimer: number | null = null;
+  private readonly measureKey = {};
 
   constructor(
     private readonly view: EditorView,
@@ -234,7 +235,7 @@ class LineDragControls {
     this.handle.addEventListener("pointerdown", this.onHandlePointerDown);
     this.menu.addEventListener("click", this.onMenuClick);
     document.addEventListener("pointerdown", this.onDocumentPointerDown, true);
-    this.positionHandle();
+    this.schedulePosition();
   }
 
   update(update: ViewUpdate) {
@@ -243,19 +244,29 @@ class LineDragControls {
       this.closeMenu();
     }
     if (update.docChanged || update.viewportChanged || update.geometryChanged || update.selectionSet) {
-      this.positionHandle();
+      this.schedulePosition();
     }
   }
 
+  /**
+   * CodeMirror forbids reading layout while it applies an update, and switches a
+   * plugin that tries off for the rest of the session. Repositioning in the
+   * measure phase keeps the handle working after every edit and cursor move.
+   */
+  private schedulePosition() {
+    this.view.requestMeasure({ key: this.measureKey, read: () => null, write: () => this.positionHandle() });
+  }
+
   destroy() {
-    this.endPointerTracking();
-    if (this.settleTimer !== null) window.clearTimeout(this.settleTimer);
-    this.cancelHide();
+    // Detach first, so nothing below can leave a listener pointing at a dead editor.
     document.removeEventListener("pointermove", this.onPointerHover);
     this.view.contentDOM.removeEventListener("pointerdown", this.onContentPointerDown, true);
     this.handle.removeEventListener("pointerdown", this.onHandlePointerDown);
     this.menu.removeEventListener("click", this.onMenuClick);
     document.removeEventListener("pointerdown", this.onDocumentPointerDown, true);
+    this.endPointerTracking(false);
+    if (this.settleTimer !== null) window.clearTimeout(this.settleTimer);
+    this.cancelHide();
     this.handle.remove();
     this.dropIndicator.remove();
     this.ghost.remove();
@@ -279,6 +290,16 @@ class LineDragControls {
     return lineNumber <= visibleLineLimit(this.view) ? lineNumber : null;
   }
 
+  /**
+   * App zoom scales every distance the browser measures, but not the pixel
+   * offsets written back into styles. Measured distances are divided by this
+   * factor so the handle, drop line, ghost, and menu land under the pointer.
+   */
+  private zoom() {
+    const width = this.view.dom.offsetWidth;
+    return width ? this.view.dom.getBoundingClientRect().width / width : 1;
+  }
+
   private positionHandle(lineNumber?: number | null) {
     const group = selectedLineGroup(this.view);
     const groupStart = group ? orderedGroup(group).fromLine : null;
@@ -298,8 +319,14 @@ class LineDragControls {
     const indentLength = target.text.match(/^[ \t]*/)?.[0].length ?? 0;
     const markerCoordinates = this.view.coordsAtPos(target.from + indentLength, 1);
     const markerLeft = Math.max(content.left, markerCoordinates?.left ?? content.left);
-    this.handle.style.left = `${markerLeft - editor.left - 24}px`;
-    this.handle.style.top = `${this.handleTop(target.from, coordinates) - editor.top}px`;
+    const zoom = this.zoom();
+    // A nested item's parent guide runs 17px left of its marker. Centring the
+    // 18px opaque handle on that guide lets the line pass behind it instead of
+    // cutting through the dots.
+    this.handle.style.left = `${(markerLeft - editor.left) / zoom - 26}px`;
+    const bounds = group ? orderedGroup(group) : null;
+    this.handle.classList.toggle("on-selection", Boolean(bounds && line >= bounds.fromLine && line <= bounds.toLine));
+    this.handle.style.top = `${(this.handleTop(target.from, coordinates, zoom) - editor.top) / zoom}px`;
     const count = group ? orderedGroup(group).toLine - orderedGroup(group).fromLine + 1 : 1;
     const listItem = parseMarkdownListTree(this.view.state.doc.toString(), visibleLineLimit(this.view)).byLine.get(line);
     const label = listItem
@@ -315,19 +342,21 @@ class LineDragControls {
   }
 
   /** Centre the handle on the line's first text row, whatever widgets sit in it. */
-  private handleTop(position: number, fallback: { top: number; bottom: number }) {
+  private handleTop(position: number, fallback: { top: number; bottom: number }, zoom: number) {
     const { node } = this.view.domAtPos(position);
     const element = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node as Element)
       ?.closest<HTMLElement>(".cm-line");
-    if (!element) return fallback.top + (fallback.bottom - fallback.top - HANDLE_HEIGHT) / 2;
+    if (!element) return fallback.top + (fallback.bottom - fallback.top - HANDLE_HEIGHT * zoom) / 2;
+    // Computed styles are unzoomed CSS pixels while the rect is zoomed, so the
+    // row is measured in CSS pixels and scaled once at the end.
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     const paddingTop = Number.parseFloat(style.paddingTop) || 0;
     const rowHeight = Math.min(
-      Number.parseFloat(style.lineHeight) || fallback.bottom - fallback.top,
-      rect.height - paddingTop,
+      Number.parseFloat(style.lineHeight) || (fallback.bottom - fallback.top) / zoom,
+      rect.height / zoom - paddingTop,
     );
-    return rect.top + paddingTop + (rowHeight - HANDLE_HEIGHT) / 2;
+    return rect.top + (paddingTop + (rowHeight - HANDLE_HEIGHT) / 2) * zoom;
   }
 
   /**
@@ -342,7 +371,7 @@ class LineDragControls {
     const editor = this.view.dom.getBoundingClientRect();
     const inRange = Boolean(target && area.contains(target))
       && event.clientY >= editor.top && event.clientY <= editor.bottom
-      && event.clientX >= editor.left - HOVER_GUTTER && event.clientX <= editor.right;
+      && event.clientX >= editor.left - HOVER_GUTTER * this.zoom() && event.clientX <= editor.right;
     if (!inRange) {
       this.scheduleHide();
       return;
@@ -524,9 +553,10 @@ class LineDragControls {
       ? this.view.coordsAtPos(sourceLine.from + sourceIndent, 1)
       : null;
     const left = Math.max(content.left, sourceCoordinates?.left ?? content.left);
-    this.dropIndicator.style.left = `${left - editor.left}px`;
-    this.dropIndicator.style.width = `${Math.max(40, content.right - left)}px`;
-    this.dropIndicator.style.top = `${(this.drag.after ? coordinates.bottom : coordinates.top) - editor.top}px`;
+    const zoom = this.zoom();
+    this.dropIndicator.style.left = `${(left - editor.left) / zoom}px`;
+    this.dropIndicator.style.width = `${Math.max(40, (content.right - left) / zoom)}px`;
+    this.dropIndicator.style.top = `${((this.drag.after ? coordinates.bottom : coordinates.top) - editor.top) / zoom}px`;
     this.dropIndicator.classList.add("visible");
   }
 
@@ -537,8 +567,9 @@ class LineDragControls {
     const editor = this.view.dom.getBoundingClientRect();
     const extra = this.drag.sourceListLine ? this.drag.descendants : count - 1;
     this.ghost.textContent = `${this.lineLabel(bounds.fromLine)}${extra ? `  +${extra}` : ""}`;
-    this.ghost.style.left = `${clientX - editor.left + 13}px`;
-    this.ghost.style.top = `${clientY - editor.top + 11}px`;
+    const zoom = this.zoom();
+    this.ghost.style.left = `${(clientX - editor.left) / zoom + 13}px`;
+    this.ghost.style.top = `${(clientY - editor.top) / zoom + 11}px`;
     this.ghost.classList.add("visible");
   }
 
@@ -588,13 +619,18 @@ class LineDragControls {
       if (label) label.textContent = isListCollapsed(this.view, lineNumber) ? "Expand children" : "Collapse children";
     }
     this.menu.hidden = false;
+    // Work in unzoomed CSS pixels throughout, matching offsetWidth and the styles.
+    const zoom = this.zoom();
     const editor = this.view.dom.getBoundingClientRect();
     const handle = this.handle.getBoundingClientRect();
-    const left = Math.max(5, Math.min(handle.left - editor.left, editor.width - this.menu.offsetWidth - 5));
-    const below = handle.bottom - editor.top + 5;
-    const top = below + this.menu.offsetHeight <= editor.height - 5
+    const handleLeft = (handle.left - editor.left) / zoom;
+    const handleTop = (handle.top - editor.top) / zoom;
+    const handleBottom = (handle.bottom - editor.top) / zoom;
+    const left = Math.max(5, Math.min(handleLeft, editor.width / zoom - this.menu.offsetWidth - 5));
+    const below = handleBottom + 5;
+    const top = below + this.menu.offsetHeight <= editor.height / zoom - 5
       ? below
-      : Math.max(5, handle.top - editor.top - this.menu.offsetHeight - 5);
+      : Math.max(5, handleTop - this.menu.offsetHeight - 5);
     this.menu.style.left = `${left}px`;
     this.menu.style.top = `${top}px`;
   }
@@ -625,7 +661,7 @@ class LineDragControls {
     this.closeMenu();
   };
 
-  private endPointerTracking() {
+  private endPointerTracking(reposition = true) {
     if (this.drag) this.handle.releasePointerCapture?.(this.drag.pointerId);
     this.drag = null;
     document.removeEventListener("pointermove", this.onDocumentPointerMove, true);
@@ -635,7 +671,7 @@ class LineDragControls {
     this.handle.classList.remove("dragging");
     this.dropIndicator.classList.remove("visible");
     this.ghost.classList.remove("visible");
-    this.positionHandle();
+    if (reposition) this.positionHandle();
   }
 }
 

@@ -27,7 +27,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { MarkdownEditor } from "./components/MarkdownEditor";
 import { SearchPalette } from "./components/SearchPalette";
 import { ApplyTemplateModal, TemplateManager } from "./components/TemplateManager";
-import { UpdateModal, UpdateReminder, useAppUpdater } from "./components/AppUpdater";
+import { UpdateModal, UpdateReminder, UpdateSettings, useAppUpdater } from "./components/AppUpdater";
 import { FeedbackModal } from "./components/FeedbackModal";
 import { SettingsPage, type SettingsSection } from "./components/SettingsPage";
 import {
@@ -1618,7 +1618,7 @@ export default function App() {
               <span className="page-title-small" data-tauri-drag-region>{settingsOpen ? "Settings" : toolbarTitle}</span>
               <span className="path-separator" data-tauri-drag-region>·</span>
               <span className="page-path-small" data-tauri-drag-region title={settingsOpen ? undefined : activePath}>
-                {settingsOpen ? (settingsSection === "templates" ? "Templates" : "Keyboard shortcuts") : activePath}
+                {settingsOpen ? (settingsSection === "templates" ? "Templates" : settingsSection === "updates" ? "Updates" : "Keyboard shortcuts") : activePath}
               </span>
             </div>
           </div>
@@ -1703,6 +1703,8 @@ export default function App() {
               onSectionChange={openSettingsSection}
               onFeedback={() => setFeedbackOpen(true)}
               onChooseFolder={() => void chooseFolder()}
+              updateAvailable={Boolean(updater.update)}
+              updates={<UpdateSettings updater={updater} beforeInstall={prepareForUpdate} />}
               templates={(
                 <TemplateManager
                   files={files}

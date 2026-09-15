@@ -162,7 +162,6 @@ function timeBlockWidget(
         const remaining = signedRemainingMilliseconds(state, anchor.plannedMinutes);
         const elapsed = elapsedMilliseconds(state);
         const overtime = remaining < 0;
-        const focused = Math.round(elapsed / 60_000);
 
         element.dataset.status = state.status;
         element.dataset.overtime = String(overtime && state.status !== "ready");
@@ -176,17 +175,16 @@ function timeBlockWidget(
         planned.textContent = `/ ${anchor.durationLabel}`;
 
         if (state.status === "completed") {
-          const over = focused - anchor.plannedMinutes;
-          // The inline pill sits inside a task line, so it stays a bare duration.
-          // The card has room to say what that duration means.
-          time.textContent = placement === "block" && over > 0
-            ? `${formatDuration(focused)} · ${formatDuration(over)} over`
-            : formatDuration(focused);
+          // Freeze the countdown exactly where Finish stopped it, so six seconds
+          // of overtime reads as -0:06 rather than rounding into a whole minute.
+          time.textContent = formatSignedClock(remaining);
           primary.textContent = "Done";
           primary.disabled = true;
           element.setAttribute(
             "aria-label",
-            `${title}: finished, ${formatDuration(focused)} of a ${anchor.durationLabel} plan`,
+            overtime
+              ? `${title}: finished ${formatClock(-remaining)} over a ${anchor.durationLabel} plan`
+              : `${title}: finished with ${formatClock(remaining)} left of a ${anchor.durationLabel} plan`,
           );
           return;
         }
